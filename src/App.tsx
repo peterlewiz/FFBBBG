@@ -1,0 +1,21 @@
+import { Route, Routes } from "react-router-dom";
+import { Layout } from "./components/Layout";
+import { Home } from "./pages/Home";
+import { History } from "./pages/History";
+import { Graphs } from "./pages/Graphs";
+import { Predictions } from "./pages/Predictions";
+
+function App() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Home />} />
+        <Route path="history" element={<History />} />
+        <Route path="graphs" element={<Graphs />} />
+        <Route path="predictions" element={<Predictions />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export default App;
