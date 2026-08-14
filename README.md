@@ -53,6 +53,24 @@ manager pages).
 To point this at a different league, change `ROOT_LEAGUE_ID` in
 `src/lib/history.ts`.
 
+## Homepage headlines & custom manager images
+
+The homepage's rotating "breaking news" card (`src/lib/headlines.ts` +
+`src/components/HeadlinesTicker.tsx`) generates ESPN-style storylines from
+real data - draft countdown, title defense, hot/cold streaks, championship
+droughts, a newcomer spotlight, and the all-time #1. Each manager appears
+in at most one headline per rotation. Only current league members (a
+roster in the latest season) are eligible, so anyone who's left the
+league never shows up.
+
+Each headline shows a photo for the manager it's about. By default that's
+their Sleeper avatar (small, on a gradient placeholder background), but
+you can drop in a custom image - AI-generated or otherwise, doesn't need
+to match Sleeper - and it'll automatically be used full-bleed instead, no
+code changes needed. See [`public/manager-images/README.md`](./public/manager-images/README.md)
+for the exact filename convention (`<userId>.jpg`, keyed by Sleeper user
+ID so it survives team-name and even display-name changes).
+
 ## Predictions setup (Supabase)
 
 The Predictions page needs a small shared Postgres database so everyone's

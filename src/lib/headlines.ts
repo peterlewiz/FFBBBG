@@ -9,8 +9,8 @@ export interface Headline {
   text: string;
   /** Shorter secondary line, ESPN-subhead style. */
   subhead: string;
-  /** Sleeper avatar id for the manager this headline is about, if any. */
-  avatar?: string | null;
+  /** The manager this headline is about, if any - lets the UI show their photo. */
+  manager?: Manager;
 }
 
 function daysUntil(date: Date): number {
@@ -55,10 +55,10 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
   const isActive = (m: Manager) => activeIds.has(m.userId);
   const usedUserIds = new Set<string>();
 
-  function pushFor(manager: Manager, headline: Omit<Headline, "avatar">) {
+  function pushFor(manager: Manager, headline: Omit<Headline, "manager">) {
     if (usedUserIds.has(manager.userId)) return;
     usedUserIds.add(manager.userId);
-    headlines.push({ ...headline, avatar: manager.avatar });
+    headlines.push({ ...headline, manager });
   }
 
   // 1. Draft countdown (not about a specific manager)

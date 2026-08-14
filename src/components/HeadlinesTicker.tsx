@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Headline } from "../lib/headlines";
+import { sleeperAvatarUrl, useCustomManagerImage } from "../lib/managerImage";
 
 const ROTATE_MS = 7000;
 
-function avatarSrc(avatar: string | null | undefined): string {
-  return avatar
-    ? `https://sleepercdn.com/avatars/thumbs/${avatar}`
-    : "https://sleepercdn.com/images/v2/icons/player_default.webp";
-}
-
 // Distinct gradient treatment per storyline type, ESPN-graphics-package style.
+// Used as the placeholder background until a real custom image is provided
+// for that headline's manager.
 const GRADIENTS: Record<string, string> = {
   "DRAFT DAY": "from-slate-700 via-slate-800 to-slate-950",
   "TITLE DEFENSE": "from-amber-500 via-amber-600 to-yellow-800",
@@ -20,6 +17,63 @@ const GRADIENTS: Record<string, string> = {
   "TOP DOG": "from-yellow-600 via-amber-700 to-neutral-900",
 };
 const DEFAULT_GRADIENT = "from-slate-700 via-slate-800 to-slate-950";
+
+function HeroBanner({ headline }: { headline: Headline }) {
+  const gradient = GRADIENTS[headline.tag] ?? DEFAULT_GRADIENT;
+  // Only probes for a real uploaded image when this headline is about someone -
+  // the hook itself no-ops safely if userId is "".
+  const customImage = useCustomManagerImage(headline.manager?.userId ?? "");
+
+  return (
+    <div
+      className={`relative aspect-[21/9] w-full overflow-hidden sm:aspect-[21/6] ${
+        customImage ? "bg-slate-900" : `bg-gradient-to-br ${gradient}`
+      }`}
+    >
+      {customImage ? (
+        // Real image provided for this manager: full-bleed, ESPN-article style.
+        <img src={customImage} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <>
+          {/* Placeholder texture until a real image exists for this manager */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 select-none text-9xl font-black leading-none text-white/5"
+          >
+            <span className="absolute -left-6 -top-10 rotate-[-12deg]">🏈</span>
+            <span className="absolute -right-10 bottom-[-3.5rem] rotate-[10deg]">🏈</span>
+          </div>
+          <div className="flex h-full items-center justify-center">
+            {headline.manager ? (
+              <img
+                src={sleeperAvatarUrl(headline.manager.avatar)}
+                alt=""
+                className="h-24 w-24 rounded-full border-4 border-white/80 object-cover shadow-xl sm:h-32 sm:w-32"
+              />
+            ) : (
+              <span className="text-6xl drop-shadow-lg sm:text-7xl">🏈</span>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* BREAKING ribbon */}
+      <div className="absolute left-0 top-0 flex items-center gap-1.5 bg-red-600 px-3 py-1.5 shadow">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+        <span className="text-[10px] font-extrabold uppercase tracking-widest text-white">
+          Breaking
+        </span>
+      </div>
+
+      {/* Tag badge */}
+      <div className="absolute right-3 top-3 rounded-full bg-black/40 px-3 py-1 backdrop-blur-sm">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+          {headline.tag}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
   const [index, setIndex] = useState(0);
@@ -33,52 +87,11 @@ export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
   if (headlines.length === 0) return null;
 
   const current = headlines[index % headlines.length];
-  const gradient = GRADIENTS[current.tag] ?? DEFAULT_GRADIENT;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      {/* Hero banner */}
-      <div
-        key={index}
-        className={`relative aspect-[21/9] w-full animate-[fadein_0.4s_ease] overflow-hidden bg-gradient-to-br sm:aspect-[21/6] ${gradient}`}
-      >
-        {/* Subtle texture: giant translucent football glyphs scattered in the background */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 select-none text-9xl font-black leading-none text-white/5"
-          style={{ WebkitTextStroke: "1px rgba(255,255,255,0.06)" }}
-        >
-          <span className="absolute -left-6 -top-10 rotate-[-12deg]">🏈</span>
-          <span className="absolute -right-10 bottom-[-3.5rem] rotate-[10deg]">🏈</span>
-        </div>
-
-        {/* BREAKING ribbon */}
-        <div className="absolute left-0 top-0 flex items-center gap-1.5 bg-red-600 px-3 py-1.5 shadow">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-white">
-            Breaking
-          </span>
-        </div>
-
-        {/* Tag badge */}
-        <div className="absolute right-3 top-3 rounded-full bg-black/30 px-3 py-1 backdrop-blur-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white">
-            {current.tag}
-          </span>
-        </div>
-
-        {/* Avatar hero */}
-        <div className="flex h-full items-center justify-center">
-          {current.avatar !== undefined ? (
-            <img
-              src={avatarSrc(current.avatar)}
-              alt=""
-              className="h-24 w-24 rounded-full border-4 border-white/80 object-cover shadow-xl sm:h-32 sm:w-32"
-            />
-          ) : (
-            <span className="text-6xl drop-shadow-lg sm:text-7xl">🏈</span>
-          )}
-        </div>
+      <div key={index} className="animate-[fadein_0.4s_ease]">
+        <HeroBanner headline={current} />
       </div>
 
       {/* Headline + subhead */}
