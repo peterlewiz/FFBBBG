@@ -4,7 +4,9 @@ import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { buildManagerSeasonLines } from "../lib/powerRankings";
 import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
-import { CHART_PALETTE, ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { teamColor } from "../lib/teamColors";
+import { TeamBadge } from "../components/TeamBadge";
 import { usePredictions } from "../lib/usePredictions";
 import { computeLeaderboard } from "../lib/predictions";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
@@ -36,7 +38,7 @@ export function ManagerDetail() {
 
   const { chartData, series } = useMemo(() => {
     if (!seasonLines.length) return { chartData: [], series: [] as ChartSeries[] };
-    const series: ChartSeries[] = [{ key: "points", name: "Points", color: CHART_PALETTE[0] }];
+    const series: ChartSeries[] = [{ key: "points", name: "Points", color: teamColor(userId ?? "") }];
     const chartData: Record<string, number | string>[] = [];
     for (const line of seasonLines) {
       line.weeklyScores.forEach((points, i) => {
@@ -53,8 +55,8 @@ export function ManagerDetail() {
   if (!manager) {
     return (
       <div className="flex flex-col items-center gap-3 py-24 text-center">
-        <p className="text-lg font-medium text-slate-900 dark:text-white">Manager not found</p>
-        <Link to="/" className="text-sm text-emerald-600 hover:underline dark:text-emerald-400">
+        <p className="text-lg font-medium text-primary">Manager not found</p>
+        <Link to="/" className="text-sm text-neon hover:underline">
           Back to home
         </Link>
       </div>
@@ -75,25 +77,20 @@ export function ManagerDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link to="/" className="text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+      <Link to="/" className="text-sm text-muted hover:text-primary">
         ← Back to home
       </Link>
 
       <div className="flex items-center gap-4">
-        <img
-          src={
-            manager.avatar
-              ? `https://sleepercdn.com/avatars/thumbs/${manager.avatar}`
-              : "https://sleepercdn.com/images/v2/icons/player_default.webp"
-          }
-          alt=""
-          className="h-16 w-16 shrink-0 rounded-full bg-slate-100 object-cover dark:bg-slate-800"
-        />
+        <TeamBadge userId={manager.userId} displayName={manager.displayName} size={64} />
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+          <h1
+            className="text-2xl font-bold sm:text-3xl"
+            style={{ color: teamColor(manager.userId), textShadow: `0 0 24px ${teamColor(manager.userId)}55` }}
+          >
             {manager.displayName}
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-muted">
             {titles > 0 && <span className="mr-1">{"🏆".repeat(Math.min(titles, 5))}</span>}
             {seasonLines.length} seasons played
           </p>
@@ -126,14 +123,14 @@ export function ManagerDetail() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-primary">
             Season by season
           </h2>
         </div>
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
             <tr>
               <th className="px-4 py-3 font-medium">Season</th>
               <th className="px-4 py-3 font-medium">Team Name</th>
@@ -143,29 +140,29 @@ export function ManagerDetail() {
               <th className="px-4 py-3 font-medium">Playoffs</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-line">
             {seasonLines
               .slice()
               .reverse()
               .map((l) => (
                 <tr key={l.season}>
-                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                  <td className="px-4 py-3 font-medium text-primary">
                     {l.season}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {manager.teamNameBySeason[l.season] ?? manager.teamName}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {l.wins}-{l.losses}
                     {l.ties > 0 ? `-${l.ties}` : ""}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {l.pointsFor.toFixed(1)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {l.pointsAgainst.toFixed(1)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {l.madePlayoffs ? "✅" : "—"}
                   </td>
                 </tr>
@@ -175,8 +172,8 @@ export function ManagerDetail() {
       </div>
 
       {chartData.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
+        <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-primary">
             Weekly scoring, career
           </h2>
           <ScoreTrendChart data={chartData} series={series} xKey="label" yLabel="Points" />
@@ -199,13 +196,13 @@ function StatTile({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 ${wide ? "sm:col-span-4" : ""}`}
+      className={`rounded-2xl border border-line bg-surface p-4 shadow-sm ${wide ? "sm:col-span-4" : ""}`}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
-      {sub && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</p>}
+      <p className="mt-1 text-2xl font-bold text-primary">{value}</p>
+      {sub && <p className="mt-1 text-xs text-muted">{sub}</p>}
     </div>
   );
 }

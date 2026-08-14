@@ -23,8 +23,8 @@ export function Countdown({ target, label }: { target: Date; label: string }) {
 
   if (remaining.done) {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center dark:border-emerald-500/30 dark:bg-emerald-500/10">
-        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+      <div className="rounded-2xl border border-neon/30 bg-neon/10 px-5 py-4 text-center">
+        <p className="text-sm font-semibold text-neon">
           {label} is here! 🏈
         </p>
       </div>
@@ -39,17 +39,17 @@ export function Countdown({ target, label }: { target: Date; label: string }) {
   ];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+    <div className="rounded-2xl border border-line bg-surface px-5 py-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">
         {label}
       </p>
       <div className="mt-2 flex items-baseline gap-4">
         {units.map(([value, unit]) => (
           <div key={unit} className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+            <span className="text-2xl font-bold tabular-nums text-primary">
               {value}
             </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">{unit}</span>
+            <span className="text-xs text-muted">{unit}</span>
           </div>
         ))}
       </div>

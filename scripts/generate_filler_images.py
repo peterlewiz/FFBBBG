@@ -1,224 +1,200 @@
 #!/usr/bin/env python3
-"""Generate placeholder hero images for each manager: football-themed,
-anime/manga action-card style - speed lines, halftone texture, a flying
-football with motion streaks, bold outlined title text. Meant to be
-replaced later with real AI-generated images."""
+"""Generate placeholder hero images for each manager: sleek dark cards
+with that manager's signature neon color (kept in sync with
+src/lib/teamColors.ts) - neon perspective grid, glowing wireframe
+football, and glowing title text. Meant to be replaced later with real
+AI-generated art; swapping a file at the same path needs no code change.
 
-from PIL import Image, ImageDraw, ImageFont
-import colorsys
-import hashlib
-import math
+Run:  python3 scripts/generate_filler_images.py
+"""
+
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import os
-import random
 
+# (userId, displayName, neon hex) - colors mirror src/lib/teamColors.ts
 MANAGERS = [
-    ("738538726719930368", "3mojt"),
-    ("978857538626084864", "Enasif18"),
-    ("739228047332548608", "frtheo"),
-    ("739598324197392384", "KokoM"),
-    ("739228718886711296", "MarioM26"),
-    ("740737264774217728", "maryghaly"),
-    ("853720333243482112", "mavs97"),
-    ("732791680197054464", "mmasoud2"),
-    ("738510505450283008", "plewiz"),
-    ("976317587141287936", "sharo733"),
-    ("872210229440487424", "SumoFlakes"),
-    ("737330429740363776", "Youssefgirges"),
+    ("737330429740363776", "Youssefgirges", "#00E5FF"),
+    ("739228718886711296", "MarioM26", "#FF2BD6"),
+    ("740737264774217728", "maryghaly", "#A3FF12"),
+    ("976317587141287936", "sharo733", "#FF7A1A"),
+    ("732791680197054464", "mmasoud2", "#9D4EFF"),
+    ("978857538626084864", "Enasif18", "#00FF9C"),
+    ("738510505450283008", "plewiz", "#FF1E6F"),
+    ("739598324197392384", "KokoM", "#2E8BFF"),
+    ("853720333243482112", "mavs97", "#FFE81A"),
+    ("872210229440487424", "SumoFlakes", "#00FFD1"),
+    ("739228047332548608", "frtheo", "#FF3B3B"),
+    ("738538726719930368", "3mojt", "#6C5CFF"),
 ]
 
 OUT_DIR = "/Users/plewiz/Documents/sleeper-league-site/public/manager-images"
 W, H = 1260, 480
+INK = (5, 6, 11)
 FONT_BLACK = "/System/Library/Fonts/Supplemental/Arial Black.ttf"
 FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 
 
-def hsl(h, s, l):
-    r, g, b = colorsys.hls_to_rgb(h, l, s)
-    return (int(r * 255), int(g * 255), int(b * 255))
+def hex_rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
 
 
-def gradient_colors(index: int, total: int, seed_name: str):
-    # Evenly space hues around the wheel by index (golden-angle stepping
-    # avoids two adjacent slots ever landing near the same hue, unlike
-    # pure hashing which can cluster with only a dozen samples), then
-    # nudge deterministically per-name so re-running stays stable.
-    h = int(hashlib.sha256(seed_name.encode()).hexdigest(), 16)
-    golden_angle = 0.618033988749895
-    hue1 = (index * golden_angle + (h % 1000) / 100000.0) % 1.0
-    hue2 = (hue1 + 0.06) % 1.0
-    c1 = hsl(hue1, 0.75, 0.32)
-    c2 = hsl(hue2, 0.85, 0.14)
-    accent = hsl((hue1 + 0.5) % 1.0, 0.9, 0.62)  # complementary pop color
-    return c1, c2, accent
+def glow(layer: Image.Image, radius: int, passes=3) -> Image.Image:
+    """Stack progressively blurred copies to fake a neon bloom."""
+    out = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    for i in range(passes, 0, -1):
+        blurred = layer.filter(ImageFilter.GaussianBlur(radius * i / passes))
+        out = Image.alpha_composite(out, blurred)
+    return Image.alpha_composite(out, layer)
 
 
-def make_gradient(w, h, c1, c2, angle_deg=125):
-    base = Image.new("RGB", (w, h), c1)
-    top = Image.new("RGB", (w, h), c2)
-    mask = Image.new("L", (w, h))
-    angle = math.radians(angle_deg)
-    dx, dy = math.cos(angle), math.sin(angle)
-    corners = [(0, 0), (w, 0), (0, h), (w, h)]
-    projections = [x * dx + y * dy for x, y in corners]
-    pmin, pmax = min(projections), max(projections)
-    data = []
-    for y in range(h):
-        for x in range(w):
-            p = x * dx + y * dy
-            t = (p - pmin) / (pmax - pmin) if pmax != pmin else 0
-            data.append(int(max(0, min(1, t)) * 255))
-    mask.putdata(data)
-    return Image.composite(top, base, mask)
-
-
-def add_speed_lines(img: Image.Image, seed: int, origin=None, color=(255, 255, 255)):
-    """Anime-style radiating action lines fanning out from a focal point."""
-    w, h = img.size
-    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    rng = random.Random(seed)
-    ox, oy = origin or (w * 0.14, h * 0.5)
-    n_lines = 46
-    max_r = math.hypot(w, h) * 1.1
-    for i in range(n_lines):
-        angle = rng.uniform(0, 2 * math.pi)
-        length = rng.uniform(max_r * 0.35, max_r)
-        width = rng.choice([1, 1, 2, 2, 3])
-        alpha = rng.randint(14, 46)
-        x2 = ox + math.cos(angle) * length
-        y2 = oy + math.sin(angle) * length
-        draw.line([(ox, oy), (x2, y2)], fill=(*color, alpha), width=width)
-    img = Image.alpha_composite(img.convert("RGBA"), layer)
-    return img.convert("RGB")
-
-
-def add_halftone(img: Image.Image, seed: int, box, dot_max=5, gap=13, color=(255, 255, 255), alpha=40):
-    """Manga-style halftone dot screen inside a rectangular region."""
-    w, h = img.size
-    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    x0, y0, x1, y1 = box
-    rng = random.Random(seed)
-    y = y0
-    row = 0
-    while y < y1:
-        x = x0 + (gap / 2 if row % 2 else 0)
-        while x < x1:
-            # dots shrink toward the edges of the box for a faded screen-tone look
-            dx = min(x - x0, x1 - x) / max(1, (x1 - x0) / 2)
-            dy = min(y - y0, y1 - y) / max(1, (y1 - y0) / 2)
-            fade = max(0.15, min(dx, dy))
-            r = dot_max * fade
-            if r > 0.6:
-                draw.ellipse([x - r, y - r, x + r, y + r], fill=(*color, alpha))
-            x += gap
-        y += gap
-        row += 1
-    return Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
-
-
-def draw_football(img: Image.Image, center, size, rotation_deg, accent):
-    """A simple stylized American football with laces and a motion glow."""
-    w, h = img.size
-    fw, fh = size
-    pad = 40
-    layer = Image.new("RGBA", (fw + pad * 2, fh + pad * 2), (0, 0, 0, 0))
+def draw_grid(size, color):
+    """Perspective floor grid fading toward the horizon."""
+    w, h = size
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    cx, cy = layer.size[0] / 2, layer.size[1] / 2
+    horizon = h * 0.52
+    vpx = w * 0.5
 
-    # motion streaks trailing behind (drawn first, so they sit under the ball)
-    for i in range(6, 0, -1):
-        offset = i * 14
-        alpha = int(70 / i)
-        d.ellipse(
-            [pad - offset, pad + fh * 0.5 - 6, pad + fw - offset, pad + fh * 0.5 + 6],
-            fill=(255, 255, 255, alpha),
-        )
+    # verticals converging on the vanishing point
+    for i in range(-14, 15):
+        x_bottom = vpx + i * (w / 10)
+        d.line([(x_bottom, h), (vpx + i * 6, horizon)], fill=(*color, 40), width=2)
 
-    # ball body
-    d.ellipse([pad, pad, pad + fw, pad + fh], fill=(120, 66, 24, 255), outline=(30, 16, 6, 255), width=6)
-    # leather seams
-    d.line([(pad + fw * 0.08, cy), (pad + fw * 0.92, cy)], fill=(30, 16, 6, 230), width=4)
+    # horizontals, spaced so they bunch up near the horizon
+    y = h
+    step = 6.0
+    while y > horizon:
+        t = (y - horizon) / (h - horizon)
+        d.line([(0, y), (w, y)], fill=(*color, int(18 + 42 * t)), width=2)
+        step *= 1.32
+        y -= step
+
+    # mask so the grid only lives in the lower half
+    mask = Image.linear_gradient("L").resize(size)
+    layer.putalpha(Image.composite(layer.getchannel("A"), Image.new("L", size, 0), mask))
+    return layer
+
+
+def draw_football(size, color, center, ball_w, ball_h):
+    """Neon wireframe football: outline, seam, and laces - no fill."""
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    cx, cy = center
+    box = [cx - ball_w / 2, cy - ball_h / 2, cx + ball_w / 2, cy + ball_h / 2]
+    d.ellipse(box, outline=(*color, 255), width=5)
+
+    # inner seam line
+    d.line([(cx - ball_w * 0.34, cy), (cx + ball_w * 0.34, cy)], fill=(*color, 200), width=3)
     # laces
-    lace_x0, lace_x1 = pad + fw * 0.38, pad + fw * 0.62
-    d.line([(lace_x0, cy), (lace_x1, cy)], fill=(255, 255, 255, 240), width=5)
-    for t in range(5):
-        lx = lace_x0 + (lace_x1 - lace_x0) * (t + 0.5) / 5
-        d.line([(lx, cy - 10), (lx, cy + 10)], fill=(255, 255, 255, 240), width=4)
-
-    # accent rim glow
-    d.ellipse([pad - 5, pad - 5, pad + fw + 5, pad + fh + 5], outline=(*accent, 140), width=3)
-
-    layer = layer.rotate(rotation_deg, expand=True, resample=Image.BICUBIC)
-    img = img.convert("RGBA")
-    px = int(center[0] - layer.size[0] / 2)
-    py = int(center[1] - layer.size[1] / 2)
-    img.alpha_composite(layer, (px, py))
-    return img.convert("RGB")
+    for i in range(5):
+        lx = cx - ball_w * 0.16 + i * (ball_w * 0.32 / 4)
+        d.line([(lx, cy - ball_h * 0.12), (lx, cy + ball_h * 0.12)], fill=(*color, 255), width=4)
+    # nose highlights
+    d.arc([box[0] - 6, box[1] - 6, box[2] + 6, box[3] + 6], 200, 250, fill=(*color, 120), width=3)
+    return layer
 
 
-def draw_title(img: Image.Image, name: str, accent):
-    draw = ImageDraw.Draw(img)
-    w, h = img.size
-    max_width = w * 0.86
-    size = 168
-    font = ImageFont.truetype(FONT_BLACK, size)
+def draw_text_layer(size, text, color, font_path, y_center, left_x, max_width):
+    """Left-aligned title text, auto-shrunk to fit its own column so it
+    never collides with the football on the right."""
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+
+    fsize = 132
+    font = ImageFont.truetype(font_path, fsize)
     while True:
-        bbox = draw.textbbox((0, 0), name, font=font, stroke_width=max(2, size // 22))
-        text_w = bbox[2] - bbox[0]
-        if text_w <= max_width or size <= 44:
+        bbox = d.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= max_width or fsize <= 34:
             break
-        size -= 6
-        font = ImageFont.truetype(FONT_BLACK, size)
+        fsize -= 4
+        font = ImageFont.truetype(font_path, fsize)
 
-    stroke_w = max(4, size // 18)
-    bbox = draw.textbbox((0, 0), name, font=font, stroke_width=stroke_w)
-    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x = (w - text_w) / 2 - bbox[0]
-    y = h * 0.60 - text_h / 2 - bbox[1]
+    bbox = d.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x = left_x - bbox[0]
+    y = y_center - th / 2 - bbox[1]
+    d.text((x, y), text, font=font, fill=(*color, 255))
+    return layer, (x, y, tw, th)
 
-    # drop shadow
-    draw.text((x + 6, y + 8), name, font=font, fill=(0, 0, 0, 160))
-    # anime title-card style: bold color fill + thick dark outline
-    draw.text((x, y), name, font=font, fill=(255, 255, 255), stroke_width=stroke_w, stroke_fill=(17, 17, 17))
 
-    # small accent underline flourish
-    underline_y = y + text_h + 22
-    draw.line(
-        [(w / 2 - text_w * 0.32, underline_y), (w / 2 + text_w * 0.32, underline_y)],
-        fill=accent,
-        width=6,
+def build(user_id, name, hex_color):
+    color = hex_rgb(hex_color)
+    img = Image.new("RGBA", (W, H), (*INK, 255))
+
+    # ambient corner glows
+    ambient = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ad = ImageDraw.Draw(ambient)
+    ad.ellipse([-W * 0.2, -H * 0.6, W * 0.45, H * 0.7], fill=(*color, 30))
+    ad.ellipse([W * 0.62, H * 0.35, W * 1.25, H * 1.6], fill=(*color, 22))
+    img = Image.alpha_composite(img, ambient.filter(ImageFilter.GaussianBlur(90)))
+
+    # neon floor grid
+    img = Image.alpha_composite(img, draw_grid((W, H), color))
+
+    # Layout: name occupies the left column, football sits in its own
+    # clear zone on the right so the two never overlap.
+    TEXT_LEFT = W * 0.07
+    TEXT_MAX_W = W * 0.56
+    BALL_CX = W * 0.82
+
+    ball_w = W * 0.20
+    ball = draw_football((W, H), color, (BALL_CX, H * 0.42), ball_w, ball_w * 0.58)
+    img = Image.alpha_composite(img, glow(ball, 14))
+
+    # glowing name
+    text_layer, _ = draw_text_layer((W, H), name, color, FONT_BLACK, H * 0.42, TEXT_LEFT, TEXT_MAX_W)
+    img = Image.alpha_composite(img, glow(text_layer, 16))
+    # crisp white core on top so it stays legible at small sizes
+    core, (tx, ty, tw, th) = draw_text_layer(
+        (W, H), name, (255, 255, 255), FONT_BLACK, H * 0.42, TEXT_LEFT, TEXT_MAX_W
     )
+    img = Image.alpha_composite(img, core)
 
-    tag_font = ImageFont.truetype(FONT_BOLD, 20)
-    tag = "PLACEHOLDER IMAGE"
-    tbbox = draw.textbbox((0, 0), tag, font=tag_font)
-    tw = tbbox[2] - tbbox[0]
-    draw.text((w - tw - 24, h - 40), tag, font=tag_font, fill=(255, 255, 255, 140))
-    return img
+    # Accent rule under the name, left-aligned with it. Pinned to a fixed
+    # baseline rather than the text bbox: bbox height varies with which
+    # glyphs a name happens to use (descenders in "plewiz", none in
+    # "mavs97"), which put the rule through the letters on some names.
+    rule = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(rule)
+    rule_y = H * 0.63
+    rd.line([(tx, rule_y), (tx + tw * 0.55, rule_y)], fill=(*color, 255), width=4)
+    img = Image.alpha_composite(img, glow(rule, 10))
+
+    # thin neon frame + corner ticks, HUD feel
+    frame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(frame)
+    fd.rectangle([10, 10, W - 11, H - 11], outline=(*color, 70), width=2)
+    for cx, cy, dx, dy in ((10, 10, 1, 1), (W - 11, 10, -1, 1), (10, H - 11, 1, -1), (W - 11, H - 11, -1, -1)):
+        fd.line([(cx, cy), (cx + 46 * dx, cy)], fill=(*color, 220), width=4)
+        fd.line([(cx, cy), (cx, cy + 46 * dy)], fill=(*color, 220), width=4)
+    img = Image.alpha_composite(img, glow(frame, 8))
+
+    # scanlines
+    scan = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(scan)
+    for y in range(0, H, 3):
+        sd.line([(0, y), (W, y)], fill=(255, 255, 255, 8), width=1)
+    img = Image.alpha_composite(img, scan)
+
+    # placeholder tag
+    tag = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    td = ImageDraw.Draw(tag)
+    tag_font = ImageFont.truetype(FONT_BOLD, 18)
+    label = "PLACEHOLDER"
+    tb = td.textbbox((0, 0), label, font=tag_font)
+    td.text((W - (tb[2] - tb[0]) - 30, H - 42), label, font=tag_font, fill=(*color, 150))
+    img = Image.alpha_composite(img, tag)
+
+    out_path = os.path.join(OUT_DIR, f"{user_id}.jpg")
+    img.convert("RGB").save(out_path, "JPEG", quality=90)
+    print(f"wrote {out_path}  ({name} {hex_color})")
 
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    for idx, (user_id, name) in enumerate(MANAGERS):
-        seed = int(hashlib.sha256(name.encode()).hexdigest(), 16) % (2**31)
-        rng = random.Random(seed)
-        c1, c2, accent = gradient_colors(idx, len(MANAGERS), name)
-
-        img = make_gradient(W, H, c1, c2)
-        img = add_halftone(img, seed, box=(0, 0, W * 0.55, H), dot_max=4, gap=16, alpha=26)
-        img = add_speed_lines(img, seed, origin=(W * 0.12, H * 0.42), color=(255, 255, 255))
-
-        ball_size = (int(W * 0.30), int(W * 0.30 * 0.6))
-        ball_center = (W * 0.80, H * 0.38)
-        rotation = rng.uniform(-35, -15)
-        img = draw_football(img, ball_center, ball_size, rotation, accent)
-
-        img = draw_title(img, name, accent)
-
-        out_path = os.path.join(OUT_DIR, f"{user_id}.jpg")
-        img.convert("RGB").save(out_path, "JPEG", quality=90)
-        print(f"wrote {out_path}  ({name})")
+    for user_id, name, hex_color in MANAGERS:
+        build(user_id, name, hex_color)
 
 
 if __name__ == "__main__":

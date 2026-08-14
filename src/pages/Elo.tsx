@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { computeEloRatings, getEloLeaderboard, winProbability } from "../lib/elo";
-import { CHART_PALETTE, ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { teamColor } from "../lib/teamColors";
 
 export function Elo() {
   const { data, loading, error } = useLeagueHistory();
@@ -18,10 +19,10 @@ export function Elo() {
       return { chartData: [], series: [] as ChartSeries[] };
     }
     const userIds = Object.keys(data.managers).sort();
-    const series: ChartSeries[] = userIds.map((userId, i) => ({
+    const series: ChartSeries[] = userIds.map((userId) => ({
       key: userId,
       name: data.managers[userId]?.displayName ?? userId,
-      color: CHART_PALETTE[i % CHART_PALETTE.length],
+      color: teamColor(userId),
     }));
     const chartData = eloResult.history.map((snap) => {
       const row: Record<string, number | string> = {
@@ -79,32 +80,32 @@ export function Elo() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">Elo</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Elo</h1>
+        <p className="mt-1 text-sm text-muted">
           A simple Elo rating built from every historical matchup — higher rating means a
           manager has consistently beaten good teams by good margins. See the{" "}
-          <span className="font-medium text-slate-700 dark:text-slate-200">Predictions</span>{" "}
+          <span className="font-medium text-body">Predictions</span>{" "}
           tab to make your own picks for the week.
         </p>
       </div>
 
       {upcomingMatchups.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+        <div className="rounded-2xl border border-line bg-surface shadow-sm">
+          <div className="border-b border-line px-5 py-4">
+            <h2 className="text-lg font-semibold text-primary">
               Elo Win Probability — This Week
             </h2>
           </div>
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="divide-y divide-line">
             {upcomingMatchups.map((m, i) => (
               <li key={i} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className="font-medium text-slate-900 dark:text-white">
+                <span className="font-medium text-primary">
                   {m.managerA.displayName}
                 </span>
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="text-xs font-semibold text-neon">
                   {(m.probA * 100).toFixed(0)}% – {((1 - m.probA) * 100).toFixed(0)}%
                 </span>
-                <span className="font-medium text-slate-900 dark:text-white">
+                <span className="font-medium text-primary">
                   {m.managerB.displayName}
                 </span>
               </li>
@@ -113,20 +114,20 @@ export function Elo() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Elo Leaderboard</h2>
+      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-primary">Elo Leaderboard</h2>
         </div>
-        <ol className="divide-y divide-slate-100 dark:divide-slate-800">
+        <ol className="divide-y divide-line">
           {leaderboard.map((entry, i) => (
             <li key={entry.manager.userId} className="flex items-center gap-4 px-5 py-3">
-              <span className="w-6 text-center text-sm font-semibold text-slate-400 dark:text-slate-500">
+              <span className="w-6 text-center text-sm font-semibold text-muted">
                 {i + 1}
               </span>
-              <span className="flex-1 truncate text-sm font-medium text-slate-900 dark:text-white">
+              <span className="flex-1 truncate text-sm font-medium text-primary">
                 {entry.manager.displayName}
               </span>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <span className="text-sm font-semibold text-body">
                 {entry.rating}
               </span>
             </li>
@@ -135,8 +136,8 @@ export function Elo() {
       </div>
 
       {chartData.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
+        <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-primary">
             Rating over time
           </h2>
           <ScoreTrendChart data={chartData} series={series} xKey="label" yLabel="Elo rating" />

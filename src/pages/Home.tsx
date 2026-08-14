@@ -28,10 +28,10 @@ export function Home() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+          <h1 className="text-2xl font-bold text-primary sm:text-3xl">
             League Home
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-sm text-muted">
             {data.seasons[0]?.season}–{latestSeason?.season} ·{" "}
             {Object.keys(data.managers).length} managers
           </p>
@@ -44,7 +44,7 @@ export function Home() {
       </div>
 
       {seasonNotStarted && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
           The {latestSeason.season} season hasn&apos;t started yet — rankings below reflect
           all completed seasons so far.
         </div>

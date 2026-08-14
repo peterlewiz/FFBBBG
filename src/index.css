@@ -1,14 +1,39 @@
 @import "tailwindcss";
 
+/*
+ * Committed dark theme with neon accents - deliberately its own look,
+ * not a copy of Sleeper's UI. Each manager gets a signature neon color
+ * (src/lib/teamColors.ts) applied as inline style where they appear;
+ * these tokens cover the surfaces and type that sit behind them.
+ */
 @theme {
   --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  --color-ink: #05060b; /* page background */
+  --color-surface: #0c0e16; /* cards */
+  --color-surface-2: #141826; /* elevated / hover */
+  --color-line: #1c2233; /* borders, dividers */
+  --color-primary: #eef2ff; /* headings */
+  --color-body: #b9c1d9; /* body copy */
+  --color-muted: #767f99; /* secondary / labels */
+  --color-neon: #00e5ff; /* default site accent */
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  @apply bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100;
+  @apply bg-ink text-body;
+  background-image:
+    radial-gradient(60rem 40rem at 15% -10%, rgba(0, 229, 255, 0.06), transparent 70%),
+    radial-gradient(50rem 35rem at 90% 0%, rgba(157, 78, 255, 0.05), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Native form controls should follow the dark surface, not the OS default. */
+select,
+option {
+  @apply bg-surface-2 text-primary;
 }

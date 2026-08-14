@@ -20,7 +20,7 @@ export function History() {
 
   if (!activeSeason) {
     return (
-      <p className="text-sm text-slate-500 dark:text-slate-400">
+      <p className="text-sm text-muted">
         No season data available yet.
       </p>
     );
@@ -47,10 +47,10 @@ export function History() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">
           Season History
         </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-muted">
           Final standings for each season, plus all-time head-to-head records.
         </p>
       </div>
@@ -64,8 +64,8 @@ export function History() {
             onClick={() => setSelected(s.season)}
             className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
               s.season === activeSeason.season
-                ? "bg-emerald-500 text-white"
-                : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
+                ? "bg-neon text-ink"
+                : "bg-surface text-body ring-1 ring-line hover:bg-surface"
             }`}
           >
             {s.season}
@@ -78,9 +78,9 @@ export function History() {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
             <tr>
               <th className="px-4 py-3 font-medium">#</th>
               <th className="px-4 py-3 font-medium">Manager</th>
@@ -89,35 +89,35 @@ export function History() {
               <th className="px-4 py-3 font-medium">PA</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-line">
             {standings.map((row, i) => {
               const seasonTeamName =
                 row.manager.teamNameBySeason[activeSeason.season] ?? row.manager.teamName;
               return (
                 <tr key={row.rosterId}>
-                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{i + 1}</td>
+                  <td className="px-4 py-3 text-muted">{i + 1}</td>
                   <td className="px-4 py-3">
                     <Link
                       to={`/manager/${row.manager.userId}`}
-                      className="font-medium text-slate-900 hover:underline dark:text-white"
+                      className="font-medium text-primary hover:underline"
                     >
                       {row.isChampion && <span className="mr-1.5">🏆</span>}
                       {row.manager.displayName}
                     </Link>
                     {seasonTeamName !== row.manager.displayName && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="text-xs text-muted">
                         {seasonTeamName}
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {row.wins}-{row.losses}
                     {row.ties > 0 ? `-${row.ties}` : ""}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {row.pointsFor.toFixed(1)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  <td className="px-4 py-3 text-body">
                     {row.pointsAgainst.toFixed(1)}
                   </td>
                 </tr>

@@ -1,73 +1,93 @@
 import { useEffect, useState } from "react";
 import type { Headline } from "../lib/headlines";
-import { sleeperAvatarUrl, useCustomManagerImage } from "../lib/managerImage";
+import { useCustomManagerImage } from "../lib/managerImage";
+import { teamColor, teamColorAlpha } from "../lib/teamColors";
 
 const ROTATE_MS = 7000;
-
-// Distinct gradient treatment per storyline type, ESPN-graphics-package style.
-// Used as the placeholder background until a real custom image is provided
-// for that headline's manager.
-const GRADIENTS: Record<string, string> = {
-  "DRAFT DAY": "from-slate-700 via-slate-800 to-slate-950",
-  "TITLE DEFENSE": "from-amber-500 via-amber-600 to-yellow-800",
-  "HEATING UP": "from-orange-500 via-red-600 to-red-800",
-  "SKID WATCH": "from-sky-700 via-slate-800 to-slate-950",
-  "STILL WAITING": "from-violet-600 via-purple-700 to-indigo-900",
-  "NEW BLOOD": "from-emerald-500 via-teal-600 to-teal-800",
-  "TOP DOG": "from-yellow-600 via-amber-700 to-neutral-900",
-};
-const DEFAULT_GRADIENT = "from-slate-700 via-slate-800 to-slate-950";
+const SITE_NEON = "#00e5ff"; // used for headlines not about a specific manager
 
 function HeroBanner({ headline }: { headline: Headline }) {
-  const gradient = GRADIENTS[headline.tag] ?? DEFAULT_GRADIENT;
-  // Only probes for a real uploaded image when this headline is about someone -
-  // the hook itself no-ops safely if userId is "".
-  const customImage = useCustomManagerImage(headline.manager?.userId ?? "");
+  const userId = headline.manager?.userId;
+  const accent = userId ? teamColor(userId) : SITE_NEON;
+  const glow = userId ? teamColorAlpha(userId, 0.35) : "rgba(0, 229, 255, 0.35)";
+  const customImage = useCustomManagerImage(userId ?? "");
 
   return (
     <div
-      className={`relative aspect-[21/9] w-full overflow-hidden sm:aspect-[21/6] ${
-        customImage ? "bg-slate-900" : `bg-gradient-to-br ${gradient}`
-      }`}
+      className="relative aspect-[21/9] w-full overflow-hidden bg-ink sm:aspect-[21/6]"
+      style={{ boxShadow: `inset 0 0 120px ${teamColorAlpha(userId ?? "", 0.12)}` }}
     >
       {customImage ? (
-        // Real image provided for this manager: full-bleed, ESPN-article style.
         <img src={customImage} alt="" className="h-full w-full object-cover" />
       ) : (
         <>
-          {/* Placeholder texture until a real image exists for this manager */}
+          {/* Neon grid floor + glow, no photo yet */}
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 select-none text-9xl font-black leading-none text-white/5"
-          >
-            <span className="absolute -left-6 -top-10 rotate-[-12deg]">🏈</span>
-            <span className="absolute -right-10 bottom-[-3.5rem] rotate-[10deg]">🏈</span>
-          </div>
-          <div className="flex h-full items-center justify-center">
-            {headline.manager ? (
-              <img
-                src={sleeperAvatarUrl(headline.manager.avatar)}
-                alt=""
-                className="h-24 w-24 rounded-full border-4 border-white/80 object-cover shadow-xl sm:h-32 sm:w-32"
-              />
-            ) : (
-              <span className="text-6xl drop-shadow-lg sm:text-7xl">🏈</span>
-            )}
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `
+                linear-gradient(${teamColorAlpha(userId ?? "", 0.12)} 1px, transparent 1px),
+                linear-gradient(90deg, ${teamColorAlpha(userId ?? "", 0.12)} 1px, transparent 1px)`,
+              backgroundSize: "44px 44px",
+              maskImage: "linear-gradient(to top, black, transparent 75%)",
+            }}
+          />
+          <div
+            aria-hidden
+            className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+            style={{ background: glow }}
+          />
+          <div className="relative flex h-full items-center justify-center">
+            <span
+              className="text-6xl sm:text-7xl"
+              style={{ filter: `drop-shadow(0 0 18px ${accent})` }}
+            >
+              🏈
+            </span>
           </div>
         </>
       )}
 
+      {/* Scanline sheen over the whole banner, ties photo and placeholder together */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 3px)",
+        }}
+      />
+      {/* Bottom fade so the headline text below reads as one unit with the art */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3"
+        style={{ background: "linear-gradient(to top, #0c0e16, transparent)" }}
+      />
+
       {/* BREAKING ribbon */}
-      <div className="absolute left-0 top-0 flex items-center gap-1.5 bg-red-600 px-3 py-1.5 shadow">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-        <span className="text-[10px] font-extrabold uppercase tracking-widest text-white">
+      <div
+        className="absolute left-0 top-0 flex items-center gap-1.5 px-3 py-1.5"
+        style={{ background: accent, boxShadow: `0 0 24px ${glow}` }}
+      >
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink" />
+        <span className="text-[10px] font-extrabold uppercase tracking-widest text-ink">
           Breaking
         </span>
       </div>
 
       {/* Tag badge */}
-      <div className="absolute right-3 top-3 rounded-full bg-black/40 px-3 py-1 backdrop-blur-sm">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+      <div
+        className="absolute right-3 top-3 rounded-full border px-3 py-1 backdrop-blur-sm"
+        style={{
+          borderColor: teamColorAlpha(userId ?? "", 0.5),
+          background: "rgba(5, 6, 11, 0.55)",
+        }}
+      >
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: accent }}
+        >
           {headline.tag}
         </span>
       </div>
@@ -87,34 +107,42 @@ export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
   if (headlines.length === 0) return null;
 
   const current = headlines[index % headlines.length];
+  const userId = current.manager?.userId;
+  const accent = userId ? teamColor(userId) : SITE_NEON;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div
+      className="overflow-hidden rounded-2xl border bg-surface"
+      style={{
+        borderColor: teamColorAlpha(userId ?? "", 0.35),
+        boxShadow: `0 0 40px ${teamColorAlpha(userId ?? "", 0.1)}`,
+      }}
+    >
       <div key={index} className="animate-[fadein_0.4s_ease]">
         <HeroBanner headline={current} />
       </div>
 
-      {/* Headline + subhead */}
       <div className="px-5 py-4">
-        <p className="text-lg font-extrabold leading-tight text-slate-900 dark:text-white sm:text-xl">
+        <p className="text-lg font-extrabold leading-tight text-primary sm:text-xl">
           {current.text}
         </p>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{current.subhead}</p>
+        <p className="mt-1 text-sm text-muted">{current.subhead}</p>
       </div>
 
       {headlines.length > 1 && (
-        <div className="flex items-center justify-center gap-1.5 border-t border-slate-100 py-2 dark:border-slate-800">
+        <div className="flex items-center justify-center gap-1.5 border-t border-line py-2">
           {headlines.map((h, i) => (
             <button
               key={h.tag + i}
               type="button"
               aria-label={`Show headline ${i + 1}`}
               onClick={() => setIndex(i)}
-              className={`h-1.5 rounded-full transition-all ${
+              className={`h-1.5 rounded-full transition-all ${i === index ? "w-5" : "w-1.5 bg-line hover:bg-muted"}`}
+              style={
                 i === index
-                  ? "w-5 bg-red-600"
-                  : "w-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600"
-              }`}
+                  ? { background: accent, boxShadow: `0 0 10px ${accent}` }
+                  : undefined
+              }
             />
           ))}
         </div>

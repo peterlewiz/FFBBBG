@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { LeagueHistory } from "../lib/history";
 import { computeHeadToHead } from "../lib/headToHead";
+import { teamColor } from "../lib/teamColors";
+import { TeamBadge } from "./TeamBadge";
 
 export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
   const managers = useMemo(
@@ -21,10 +23,10 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
   }, [history, userIdA, userIdB]);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Head-to-Head</h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
+    <div className="rounded-2xl border border-line bg-surface shadow-sm">
+      <div className="border-b border-line px-5 py-4">
+        <h2 className="text-lg font-semibold text-primary">Head-to-Head</h2>
+        <p className="text-xs text-muted">
           Pick two managers to see every matchup between them
         </p>
       </div>
@@ -33,7 +35,7 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
         <select
           value={userIdA}
           onChange={(e) => setUserIdA(e.target.value)}
-          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="flex-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
         >
           <option value="">Select manager A</option>
           {managers.map((m) => (
@@ -42,13 +44,13 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
             </option>
           ))}
         </select>
-        <span className="shrink-0 text-center text-xs font-semibold uppercase text-slate-400 dark:text-slate-500">
+        <span className="shrink-0 text-center text-xs font-semibold uppercase text-muted">
           vs
         </span>
         <select
           value={userIdB}
           onChange={(e) => setUserIdB(e.target.value)}
-          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="flex-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
         >
           <option value="">Select manager B</option>
           {managers.map((m) => (
@@ -62,49 +64,45 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
       {managerA && managerB && result && (
         <>
           {result.games.length === 0 ? (
-            <p className="border-t border-slate-100 px-5 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <p className="border-t border-line px-5 py-4 text-sm text-muted">
               {managerA.displayName} and {managerB.displayName} haven&apos;t played each other yet.
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-px border-t border-slate-100 bg-slate-100 dark:border-slate-800 dark:bg-slate-800">
-                <div className="bg-white px-5 py-4 text-center dark:bg-slate-900">
-                  <Link
-                    to={`/manager/${managerA.userId}`}
-                    className="text-sm font-semibold text-slate-900 hover:underline dark:text-white"
+              <div className="grid grid-cols-2 gap-px border-t border-line bg-line">
+                {[
+                  { m: managerA, wins: result.winsA, pts: result.totalPointsA },
+                  { m: managerB, wins: result.winsB, pts: result.totalPointsB },
+                ].map(({ m, wins, pts }) => (
+                  <div
+                    key={m.userId}
+                    className="bg-surface px-5 py-4 text-center"
+                    style={{ boxShadow: `inset 0 -3px 0 ${teamColor(m.userId)}` }}
                   >
-                    {managerA.displayName}
-                  </Link>
-                  <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {result.winsA}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {result.totalPointsA.toFixed(1)} pts
-                  </p>
-                </div>
-                <div className="bg-white px-5 py-4 text-center dark:bg-slate-900">
-                  <Link
-                    to={`/manager/${managerB.userId}`}
-                    className="text-sm font-semibold text-slate-900 hover:underline dark:text-white"
-                  >
-                    {managerB.displayName}
-                  </Link>
-                  <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {result.winsB}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {result.totalPointsB.toFixed(1)} pts
-                  </p>
-                </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <TeamBadge userId={m.userId} displayName={m.displayName} size={22} />
+                      <Link
+                        to={`/manager/${m.userId}`}
+                        className="text-sm font-semibold text-primary hover:underline"
+                      >
+                        {m.displayName}
+                      </Link>
+                    </div>
+                    <p className="mt-1 text-2xl font-bold" style={{ color: teamColor(m.userId) }}>
+                      {wins}
+                    </p>
+                    <p className="text-xs text-muted">{pts.toFixed(1)} pts</p>
+                  </div>
+                ))}
               </div>
               {result.ties > 0 && (
-                <p className="border-t border-slate-100 px-5 py-2 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                <p className="border-t border-line px-5 py-2 text-center text-xs text-muted">
                   {result.ties} tie{result.ties === 1 ? "" : "s"}
                 </p>
               )}
 
-              <table className="w-full border-t border-slate-100 text-left text-sm dark:border-slate-800">
-                <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              <table className="w-full border-t border-line text-left text-sm">
+                <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
                   <tr>
                     <th className="px-4 py-2 font-medium">Season</th>
                     <th className="px-4 py-2 font-medium">Week</th>
@@ -113,7 +111,7 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
                     <th className="px-4 py-2 font-medium">Winner</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-line">
                   {result.games
                     .slice()
                     .reverse()
@@ -126,19 +124,19 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
                             : "Tie";
                       return (
                         <tr key={i}>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{g.season}</td>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{g.week}</td>
+                          <td className="px-4 py-2 text-body">{g.season}</td>
+                          <td className="px-4 py-2 text-body">{g.week}</td>
                           <td
-                            className={`px-4 py-2 ${g.pointsA > g.pointsB ? "font-semibold text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-300"}`}
+                            className={`px-4 py-2 ${g.pointsA > g.pointsB ? "font-semibold text-primary" : "text-body"}`}
                           >
                             {g.pointsA.toFixed(1)}
                           </td>
                           <td
-                            className={`px-4 py-2 ${g.pointsB > g.pointsA ? "font-semibold text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-300"}`}
+                            className={`px-4 py-2 ${g.pointsB > g.pointsA ? "font-semibold text-primary" : "text-body"}`}
                           >
                             {g.pointsB.toFixed(1)}
                           </td>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">{winner}</td>
+                          <td className="px-4 py-2 text-body">{winner}</td>
                         </tr>
                       );
                     })}

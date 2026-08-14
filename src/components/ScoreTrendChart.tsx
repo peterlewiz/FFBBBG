@@ -12,11 +12,12 @@ import {
 export interface ChartSeries {
   key: string;
   name: string;
+  /** The manager's signature neon color - see src/lib/teamColors.ts. */
   color: string;
 }
 
-const GRID_COLOR = "rgba(148, 163, 184, 0.25)";
-const AXIS_COLOR = "#94a3b8";
+const GRID_COLOR = "rgba(120, 132, 165, 0.16)";
+const AXIS_COLOR = "#767f99";
 
 export function ScoreTrendChart({
   data,
@@ -46,13 +47,17 @@ export function ScoreTrendChart({
         />
         <Tooltip
           contentStyle={{
-            background: "var(--tooltip-bg, #fff)",
-            border: "1px solid rgba(148,163,184,0.3)",
-            borderRadius: 8,
+            background: "#0c0e16",
+            border: "1px solid #1c2233",
+            borderRadius: 10,
             fontSize: 12,
+            boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
           }}
+          labelStyle={{ color: "#eef2ff" }}
+          itemStyle={{ color: "#b9c1d9" }}
+          cursor={{ stroke: "rgba(120,132,165,0.35)" }}
         />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "#b9c1d9" }} />
         {series.map((s) => (
           <Line
             key={s.key}
@@ -69,20 +74,3 @@ export function ScoreTrendChart({
     </ResponsiveContainer>
   );
 }
-
-// A small, readable, colorblind-friendlyish palette that repeats if there
-// are more managers than colors.
-export const CHART_PALETTE = [
-  "#10b981", // emerald
-  "#3b82f6", // blue
-  "#f59e0b", // amber
-  "#ef4444", // red
-  "#8b5cf6", // violet
-  "#06b6d4", // cyan
-  "#ec4899", // pink
-  "#84cc16", // lime
-  "#f97316", // orange
-  "#6366f1", // indigo
-  "#14b8a6", // teal
-  "#a855f7", // purple
-];

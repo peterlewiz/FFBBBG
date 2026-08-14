@@ -8,6 +8,8 @@ import type { SleeperNflState } from "../api/types";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
 import { computeLeaderboard, upsertPrediction, type PredictionRow } from "../lib/predictions";
 import { ROOT_LEAGUE_ID } from "../lib/history";
+import { teamColor, teamColorAlpha } from "../lib/teamColors";
+import { TeamBadge } from "../components/TeamBadge";
 
 const PICKER_STORAGE_KEY = "sleeper-site:picker-user-id";
 
@@ -80,11 +82,11 @@ export function Predictions() {
 
   if (!isSupabaseConfigured) {
     return (
-      <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-lg font-medium text-slate-900 dark:text-white">
+      <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-6 text-center">
+        <p className="text-lg font-medium text-primary">
           Predictions aren&apos;t set up yet
         </p>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-muted">
           This page needs a Supabase project connected (see the README) before anyone can make
           picks.
         </p>
@@ -133,27 +135,27 @@ export function Predictions() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">
           Predictions
         </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-muted">
           Pick who wins each matchup for the week. Picks lock once a game starts. See the{" "}
-          <Link to="/elo" className="font-medium text-emerald-600 hover:underline dark:text-emerald-400">
+          <Link to="/elo" className="font-medium text-neon hover:underline">
             Elo
           </Link>{" "}
           tab for the ratings model.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <label htmlFor="picker" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm">
+        <label htmlFor="picker" className="text-sm font-medium text-body">
           Who are you?
         </label>
         <select
           id="picker"
           value={pickerUserId ?? ""}
           onChange={(e) => choosePicker(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
         >
           <option value="" disabled>
             Select your name
@@ -167,29 +169,29 @@ export function Predictions() {
       </div>
 
       {saveError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {saveError}
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-primary">
             {targetWeek !== null ? `Week ${targetWeek} Matchups` : "This Week's Matchups"}
           </h2>
         </div>
         {nflStateError ? (
-          <p className="px-5 py-4 text-sm text-red-600 dark:text-red-400">{nflStateError}</p>
+          <p className="px-5 py-4 text-sm text-red-400">{nflStateError}</p>
         ) : matchups.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+          <p className="px-5 py-4 text-sm text-muted">
             No matchups available for this week yet.
           </p>
         ) : !pickerUserId ? (
-          <p className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+          <p className="px-5 py-4 text-sm text-muted">
             Pick your name above to start making picks.
           </p>
         ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="divide-y divide-line">
             {matchups.map((m) => {
               const existingPick = predictionsState.data.find(
                 (p) =>
@@ -207,7 +209,7 @@ export function Predictions() {
                     disabled={m.locked || isSaving}
                     onClick={() => handlePick(m.matchupId, m.managerA.userId)}
                   />
-                  <span className="shrink-0 text-xs font-medium uppercase text-slate-400 dark:text-slate-500">
+                  <span className="shrink-0 text-xs font-medium uppercase text-muted">
                     vs
                   </span>
                   <PickButton
@@ -217,7 +219,7 @@ export function Predictions() {
                     onClick={() => handlePick(m.matchupId, m.managerB.userId)}
                   />
                   {m.locked && (
-                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                    <span className="shrink-0 text-xs text-muted">
                       🔒 locked
                     </span>
                   )}
@@ -228,36 +230,36 @@ export function Predictions() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-primary">
             Prediction Leaderboard
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-muted">
             Ranked by pick accuracy across every scored matchup
           </p>
         </div>
         {leaderboard.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+          <p className="px-5 py-4 text-sm text-muted">
             No scored picks yet — check back once games have been played.
           </p>
         ) : (
-          <ol className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ol className="divide-y divide-line">
             {leaderboard.map((entry, i) => (
               <li key={entry.manager.userId} className="flex items-center gap-4 px-5 py-3">
-                <span className="w-6 text-center text-sm font-semibold text-slate-400 dark:text-slate-500">
+                <span className="w-6 text-center text-sm font-semibold text-muted">
                   {i + 1}
                 </span>
                 <Link
                   to={`/manager/${entry.manager.userId}`}
-                  className="flex-1 truncate text-sm font-medium text-slate-900 hover:underline dark:text-white"
+                  className="flex-1 truncate text-sm font-medium text-primary hover:underline"
                 >
                   {entry.manager.displayName}
                 </Link>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="text-xs text-muted">
                   {entry.correct}/{entry.total}
                 </span>
-                <span className="w-14 shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-center text-sm font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                <span className="w-14 shrink-0 rounded-full bg-neon/10 px-2.5 py-1 text-center text-sm font-semibold text-neon">
                   {(entry.accuracy * 100).toFixed(0)}%
                 </span>
               </li>
@@ -280,26 +282,27 @@ function PickButton({
   disabled: boolean;
   onClick: () => void;
 }) {
+  const color = teamColor(manager.userId);
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       className={`flex flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
-        selected
-          ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-500/10 dark:text-emerald-400"
-          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/60"
+        selected ? "" : "border-line bg-surface text-body hover:bg-surface-2"
       } ${disabled && !selected ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+      style={
+        selected
+          ? {
+              color,
+              borderColor: color,
+              background: teamColorAlpha(manager.userId, 0.12),
+              boxShadow: `0 0 18px ${teamColorAlpha(manager.userId, 0.3)}`,
+            }
+          : undefined
+      }
     >
-      <img
-        src={
-          manager.avatar
-            ? `https://sleepercdn.com/avatars/thumbs/${manager.avatar}`
-            : "https://sleepercdn.com/images/v2/icons/player_default.webp"
-        }
-        alt=""
-        className="h-6 w-6 shrink-0 rounded-full bg-slate-100 object-cover dark:bg-slate-700"
-      />
+      <TeamBadge userId={manager.userId} displayName={manager.displayName} size={24} />
       <span className="truncate">{manager.displayName}</span>
       {selected && <span className="ml-auto shrink-0">✓</span>}
     </button>

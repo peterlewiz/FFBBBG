@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import type { AllTimePowerRankEntry } from "../lib/powerRankings";
+import { teamColor, teamColorAlpha } from "../lib/teamColors";
+import { TeamBadge } from "./TeamBadge";
 
 function rankMedal(rank: number): string | null {
   if (rank === 0) return "🥇";
@@ -18,54 +20,58 @@ export function PowerRankingsWidget({
   const shown = limit ? entries.slice(0, limit) : entries;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-          All-Time Power Rankings
-        </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Ranked by career championships, playoff appearances, win rate & scoring
+    <div className="rounded-2xl border border-line bg-surface">
+      <div className="border-b border-line px-5 py-4">
+        <h2 className="text-lg font-semibold text-primary">All-Time Power Rankings</h2>
+        <p className="text-xs text-muted">
+          Ranked by career championships, playoff appearances, win rate &amp; scoring
         </p>
       </div>
-      <ol className="divide-y divide-slate-100 dark:divide-slate-800">
-        {shown.map((entry, i) => (
-          <li key={entry.manager.userId}>
-            <Link
-              to={`/manager/${entry.manager.userId}`}
-              className="flex items-center gap-4 px-5 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
-            >
-              <span className="w-6 shrink-0 text-center text-sm font-semibold text-slate-400 dark:text-slate-500">
-                {rankMedal(i) ?? i + 1}
-              </span>
-              <img
-                src={
-                  entry.manager.avatar
-                    ? `https://sleepercdn.com/avatars/thumbs/${entry.manager.avatar}`
-                    : "https://sleepercdn.com/images/v2/icons/player_default.webp"
-                }
-                alt=""
-                className="h-9 w-9 shrink-0 rounded-full bg-slate-100 object-cover dark:bg-slate-800"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
-                  {entry.manager.displayName}
-                </p>
-                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  {entry.titles > 0 && (
-                    <span className="mr-1">
-                      {"🏆".repeat(Math.min(entry.titles, 5))}
-                    </span>
-                  )}
-                  {(entry.careerWinPct * 100).toFixed(0)}% career win rate ·{" "}
-                  {entry.playoffAppearances}/{entry.seasonsPlayed} playoffs
-                </p>
-              </div>
-              <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-                {entry.score.toFixed(1)}
-              </span>
-            </Link>
-          </li>
-        ))}
+      <ol className="divide-y divide-line">
+        {shown.map((entry, i) => {
+          const color = teamColor(entry.manager.userId);
+          return (
+            <li key={entry.manager.userId}>
+              <Link
+                to={`/manager/${entry.manager.userId}`}
+                className="relative flex items-center gap-4 px-5 py-3 transition-colors hover:bg-surface-2"
+              >
+                {/* team-color edge stripe */}
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-0 w-[3px]"
+                  style={{ background: color, boxShadow: `0 0 10px ${teamColorAlpha(entry.manager.userId, 0.7)}` }}
+                />
+                <span className="w-6 shrink-0 text-center text-sm font-semibold text-muted">
+                  {rankMedal(i) ?? i + 1}
+                </span>
+                <TeamBadge userId={entry.manager.userId} displayName={entry.manager.displayName} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-primary">
+                    {entry.manager.displayName}
+                  </p>
+                  <p className="truncate text-xs text-muted">
+                    {entry.titles > 0 && (
+                      <span className="mr-1">{"🏆".repeat(Math.min(entry.titles, 5))}</span>
+                    )}
+                    {(entry.careerWinPct * 100).toFixed(0)}% career win rate ·{" "}
+                    {entry.playoffAppearances}/{entry.seasonsPlayed} playoffs
+                  </p>
+                </div>
+                <span
+                  className="shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
+                  style={{
+                    color,
+                    background: teamColorAlpha(entry.manager.userId, 0.12),
+                    border: `1px solid ${teamColorAlpha(entry.manager.userId, 0.35)}`,
+                  }}
+                >
+                  {entry.score.toFixed(1)}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );

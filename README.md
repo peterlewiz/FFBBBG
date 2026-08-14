@@ -53,6 +53,23 @@ manager pages).
 To point this at a different league, change `ROOT_LEAGUE_ID` in
 `src/lib/history.ts`.
 
+## Design
+
+Committed dark theme with neon accents - deliberately its own look
+rather than a copy of Sleeper's UI, and it doesn't depend on Sleeper's
+CDN for imagery.
+
+- Surface/type tokens (`--color-ink`, `surface`, `line`, `primary`,
+  `body`, `muted`, `neon`) live in `src/index.css`; components use them
+  as `bg-surface`, `text-muted`, `border-line`, etc. There is no light
+  mode - the base classes carry the dark values directly.
+- Every manager has a signature neon color in
+  [`src/lib/teamColors.ts`](./src/lib/teamColors.ts), keyed by Sleeper
+  user_id so it survives team-name changes. It drives their power
+  ranking stripe and score pill, chart line, head-to-head card,
+  headline card glow, and `TeamBadge` (an initial on a glowing disc,
+  used instead of Sleeper avatars).
+
 ## Homepage headlines & custom manager images
 
 The homepage's rotating "breaking news" card (`src/lib/headlines.ts` +

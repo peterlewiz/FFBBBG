@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
-import { CHART_PALETTE, ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { teamColor } from "../lib/teamColors";
 import type { LeagueHistory } from "../lib/history";
 
 function useAllTimeStats(data: LeagueHistory | null) {
@@ -85,10 +86,10 @@ export function Graphs() {
     );
     const userIds = Array.from(new Set(rosterToUser.values())).sort();
 
-    const series: ChartSeries[] = userIds.map((userId, i) => ({
+    const series: ChartSeries[] = userIds.map((userId) => ({
       key: userId,
       name: data.managers[userId]?.displayName ?? userId,
-      color: CHART_PALETTE[i % CHART_PALETTE.length],
+      color: teamColor(userId),
     }));
 
     const weeks = Array.from(new Set(activeSeason.weeks.map((w) => w.week))).sort((a, b) => a - b);
@@ -111,8 +112,8 @@ export function Graphs() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">Graphs</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Graphs</h1>
+        <p className="mt-1 text-sm text-muted">
           Weekly scoring trends and all-time league trivia.
         </p>
       </div>
@@ -137,9 +138,9 @@ export function Graphs() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 className="text-lg font-semibold text-primary">
             Weekly scores
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -149,8 +150,8 @@ export function Graphs() {
                 onClick={() => setSelectedSeason(s.season)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   s.season === activeSeason?.season
-                    ? "bg-emerald-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    ? "bg-neon text-ink"
+                    : "bg-surface-2 text-body hover:bg-surface-2"
                 }`}
               >
                 {s.season}
@@ -161,7 +162,7 @@ export function Graphs() {
         {chartData.length > 0 ? (
           <ScoreTrendChart data={chartData} series={series} xKey="week" yLabel="Points" />
         ) : (
-          <p className="text-sm text-slate-500 dark:text-slate-400">No games played yet.</p>
+          <p className="text-sm text-muted">No games played yet.</p>
         )}
       </div>
     </div>
@@ -170,12 +171,12 @@ export function Graphs() {
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+    <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
-      <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{sub}</p>
+      <p className="mt-1 text-2xl font-bold text-primary">{value}</p>
+      <p className="mt-1 truncate text-xs text-muted">{sub}</p>
     </div>
   );
 }
