@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Suspense, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { LoadingScreen } from "./StatusScreen";
 
 const navItems = [
   { to: "/", label: "Home", end: true },
@@ -32,6 +34,7 @@ function LeagueLogo({ avatar }: { avatar: string | null }) {
 export function Layout() {
   // Cached by useLeagueHistory, so this doesn't cost an extra fetch.
   const { data } = useLeagueHistory();
+  const location = useLocation();
 
   return (
     <div className="min-h-screen bg-ink">
@@ -68,7 +71,16 @@ export function Layout() {
         </div>
       </header>
       <main className="mx-auto flex max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6">
-        <Outlet />
+        {/*
+         * Keyed by path so the boundary resets when the reader navigates -
+         * otherwise one crashed page would keep showing its error on every
+         * route afterwards. Suspense covers the lazy-loaded page chunks.
+         */}
+        <ErrorBoundary key={location.pathname}>
+          <Suspense fallback={<LoadingScreen label="Loading…" />}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <footer className="mx-auto max-w-5xl px-4 py-6 text-center text-xs text-muted sm:px-6">
         Data from{" "}
