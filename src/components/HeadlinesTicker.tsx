@@ -3,6 +3,12 @@ import type { Headline } from "../lib/headlines";
 
 const ROTATE_MS = 6000;
 
+function avatarSrc(avatar: string | null | undefined): string {
+  return avatar
+    ? `https://sleepercdn.com/avatars/thumbs/${avatar}`
+    : "https://sleepercdn.com/images/v2/icons/player_default.webp";
+}
+
 export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
   const [index, setIndex] = useState(0);
 
@@ -24,13 +30,15 @@ export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
             {current.tag}
           </span>
         </div>
-        <div className="flex flex-1 items-center px-4 py-3">
-          <p
-            key={index}
-            className="animate-[fadein_0.4s_ease] text-sm font-medium text-slate-800 dark:text-slate-100"
-          >
-            {current.text}
-          </p>
+        <div key={index} className="flex flex-1 items-center gap-3 animate-[fadein_0.4s_ease] px-4 py-3">
+          {current.avatar !== undefined && (
+            <img
+              src={avatarSrc(current.avatar)}
+              alt=""
+              className="h-8 w-8 shrink-0 rounded-full bg-slate-100 object-cover dark:bg-slate-800"
+            />
+          )}
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{current.text}</p>
         </div>
       </div>
       {headlines.length > 1 && (
