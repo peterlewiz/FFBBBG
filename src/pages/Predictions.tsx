@@ -94,7 +94,8 @@ export function Predictions() {
 
   if (loading || predictionsState.loading) return <LoadingScreen />;
   if (error || !data) return <ErrorScreen message={error ?? "Unknown error"} />;
-  if (predictionsState.error) return <ErrorScreen message={predictionsState.error} />;
+  if (predictionsState.error)
+    return <ErrorScreen heading="Couldn't load predictions" message={predictionsState.error} />;
 
   async function handlePick(matchupId: number, pickedUserId: string) {
     if (!pickerUserId || !currentSeason || targetWeek === null) return;

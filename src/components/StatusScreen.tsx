@@ -7,12 +7,16 @@ export function LoadingScreen({ label = "Loading league data from Sleeper..." }:
   );
 }
 
-export function ErrorScreen({ message }: { message: string }) {
+export function ErrorScreen({
+  message,
+  heading = "Couldn't load league data",
+}: {
+  message: string;
+  heading?: string;
+}) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 py-24 text-center">
-      <p className="text-lg font-medium text-red-600 dark:text-red-400">
-        Couldn&apos;t load league data
-      </p>
+      <p className="text-lg font-medium text-red-600 dark:text-red-400">{heading}</p>
       <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">{message}</p>
     </div>
   );
