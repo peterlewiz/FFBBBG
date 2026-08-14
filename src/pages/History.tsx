@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
+import { HeadToHeadPanel } from "../components/HeadToHeadPanel";
 
 export function History() {
   const { data, loading, error } = useLeagueHistory();
@@ -50,9 +51,11 @@ export function History() {
           Season History
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Final standings for each season.
+          Final standings for each season, plus all-time head-to-head records.
         </p>
       </div>
+
+      <HeadToHeadPanel history={data} />
 
       <div className="flex flex-wrap gap-2">
         {completedSeasons.map((s) => (
