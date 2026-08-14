@@ -1,13 +1,25 @@
 import { useEffect, useState } from "react";
 import type { Headline } from "../lib/headlines";
 
-const ROTATE_MS = 6000;
+const ROTATE_MS = 7000;
 
 function avatarSrc(avatar: string | null | undefined): string {
   return avatar
     ? `https://sleepercdn.com/avatars/thumbs/${avatar}`
     : "https://sleepercdn.com/images/v2/icons/player_default.webp";
 }
+
+// Distinct gradient treatment per storyline type, ESPN-graphics-package style.
+const GRADIENTS: Record<string, string> = {
+  "DRAFT DAY": "from-slate-700 via-slate-800 to-slate-950",
+  "TITLE DEFENSE": "from-amber-500 via-amber-600 to-yellow-800",
+  "HEATING UP": "from-orange-500 via-red-600 to-red-800",
+  "SKID WATCH": "from-sky-700 via-slate-800 to-slate-950",
+  "STILL WAITING": "from-violet-600 via-purple-700 to-indigo-900",
+  "NEW BLOOD": "from-emerald-500 via-teal-600 to-teal-800",
+  "TOP DOG": "from-yellow-600 via-amber-700 to-neutral-900",
+};
+const DEFAULT_GRADIENT = "from-slate-700 via-slate-800 to-slate-950";
 
 export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
   const [index, setIndex] = useState(0);
@@ -21,26 +33,62 @@ export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
   if (headlines.length === 0) return null;
 
   const current = headlines[index % headlines.length];
+  const gradient = GRADIENTS[current.tag] ?? DEFAULT_GRADIENT;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-stretch">
-        <div className="flex shrink-0 items-center bg-red-600 px-4 py-3">
-          <span className="text-xs font-extrabold uppercase tracking-wide text-white">
+      {/* Hero banner */}
+      <div
+        key={index}
+        className={`relative aspect-[21/9] w-full animate-[fadein_0.4s_ease] overflow-hidden bg-gradient-to-br sm:aspect-[21/6] ${gradient}`}
+      >
+        {/* Subtle texture: giant translucent football glyphs scattered in the background */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 select-none text-9xl font-black leading-none text-white/5"
+          style={{ WebkitTextStroke: "1px rgba(255,255,255,0.06)" }}
+        >
+          <span className="absolute -left-6 -top-10 rotate-[-12deg]">🏈</span>
+          <span className="absolute -right-10 bottom-[-3.5rem] rotate-[10deg]">🏈</span>
+        </div>
+
+        {/* BREAKING ribbon */}
+        <div className="absolute left-0 top-0 flex items-center gap-1.5 bg-red-600 px-3 py-1.5 shadow">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-white">
+            Breaking
+          </span>
+        </div>
+
+        {/* Tag badge */}
+        <div className="absolute right-3 top-3 rounded-full bg-black/30 px-3 py-1 backdrop-blur-sm">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-white">
             {current.tag}
           </span>
         </div>
-        <div key={index} className="flex flex-1 items-center gap-3 animate-[fadein_0.4s_ease] px-4 py-3">
-          {current.avatar !== undefined && (
+
+        {/* Avatar hero */}
+        <div className="flex h-full items-center justify-center">
+          {current.avatar !== undefined ? (
             <img
               src={avatarSrc(current.avatar)}
               alt=""
-              className="h-8 w-8 shrink-0 rounded-full bg-slate-100 object-cover dark:bg-slate-800"
+              className="h-24 w-24 rounded-full border-4 border-white/80 object-cover shadow-xl sm:h-32 sm:w-32"
             />
+          ) : (
+            <span className="text-6xl drop-shadow-lg sm:text-7xl">🏈</span>
           )}
-          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{current.text}</p>
         </div>
       </div>
+
+      {/* Headline + subhead */}
+      <div className="px-5 py-4">
+        <p className="text-lg font-extrabold leading-tight text-slate-900 dark:text-white sm:text-xl">
+          {current.text}
+        </p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{current.subhead}</p>
+      </div>
+
       {headlines.length > 1 && (
         <div className="flex items-center justify-center gap-1.5 border-t border-slate-100 py-2 dark:border-slate-800">
           {headlines.map((h, i) => (
@@ -60,8 +108,8 @@ export function HeadlinesTicker({ headlines }: { headlines: Headline[] }) {
       )}
       <style>{`
         @keyframes fadein {
-          from { opacity: 0; transform: translateY(2px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `}</style>
     </div>
