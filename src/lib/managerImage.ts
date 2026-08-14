@@ -35,6 +35,15 @@ function probeImage(url: string): Promise<boolean> {
 }
 
 /**
+ * Which image exists for a manager, resolved once per page load. The
+ * answer can't change while the page is open, so memoizing it matters:
+ * the headline ticker remounts this on every rotation, and re-probing
+ * each time made the hero flash its fallback before the real image
+ * reappeared.
+ */
+const resolved = new Map<string, string | null>();
+
+/**
  * Checks (client-side) whether a custom image exists for this manager yet,
  * without needing a build-time manifest - lets the UI use a completely
  * different, full-bleed layout once a real photo is available instead of
@@ -42,18 +51,25 @@ function probeImage(url: string): Promise<boolean> {
  * added to /public/manager-images later.
  */
 export function useCustomManagerImage(userId: string): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(() => resolved.get(userId) ?? null);
 
   useEffect(() => {
+    if (resolved.has(userId)) {
+      setUrl(resolved.get(userId) ?? null);
+      return;
+    }
+
     let cancelled = false;
     setUrl(null);
     (async () => {
       for (const candidate of customImageCandidates(userId)) {
         if (await probeImage(candidate)) {
+          resolved.set(userId, candidate);
           if (!cancelled) setUrl(candidate);
           return;
         }
       }
+      resolved.set(userId, null);
     })();
     return () => {
       cancelled = true;
