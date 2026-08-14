@@ -1,6 +1,7 @@
 import { cacheGet, cacheSet } from "../api/cache";
 import {
   getAllMatchupsForSeason,
+  getDraft,
   getLeague,
   getLeagueRosters,
   getLeagueUsers,
@@ -54,6 +55,14 @@ export interface SeasonData {
 export interface LeagueHistory {
   managers: Record<string, Manager>; // userId -> Manager
   seasons: SeasonData[]; // sorted oldest -> newest
+  /** Current season's league name and logo id, straight from Sleeper. */
+  leagueName: string;
+  leagueAvatar: string | null;
+  /**
+   * Scheduled draft start for the current season (epoch ms), as set by
+   * the commissioner in Sleeper. Null if no date is set yet.
+   */
+  draftStartTime: number | null;
 }
 
 function combineFptsFields(whole: number, decimal?: number): number {
@@ -64,6 +73,7 @@ async function loadSeason(leagueId: string): Promise<{
   season: SeasonData;
   users: Awaited<ReturnType<typeof getLeagueUsers>>;
   previousLeagueId: string | null;
+  league: Awaited<ReturnType<typeof getLeague>>;
 }> {
   const [league, users, rosters] = await Promise.all([
     getLeague(leagueId),
@@ -126,6 +136,7 @@ async function loadSeason(leagueId: string): Promise<{
     },
     users,
     previousLeagueId: league.previous_league_id,
+    league,
   };
 }
 
@@ -146,10 +157,13 @@ export async function loadLeagueHistory(
 
   let currentId: string | null = rootLeagueId;
   const visited = new Set<string>();
+  // Captured from the first (newest) league in the chain.
+  let currentLeague: Awaited<ReturnType<typeof getLeague>> | null = null;
 
   while (currentId && !visited.has(currentId)) {
     visited.add(currentId);
-    const { season, users, previousLeagueId } = await loadSeason(currentId);
+    const { season, users, previousLeagueId, league } = await loadSeason(currentId);
+    if (!currentLeague) currentLeague = league;
     seasons.push(season);
 
     for (const u of users) {
@@ -176,7 +190,21 @@ export async function loadLeagueHistory(
 
   seasons.sort((a, b) => Number(a.season) - Number(b.season));
 
-  const history: LeagueHistory = { managers, seasons };
+  // The commissioner's scheduled draft time, straight from Sleeper rather
+  // than hardcoded. Non-fatal if it fails - the countdown just falls back.
+  let draftStartTime: number | null = null;
+  if (currentLeague?.draft_id) {
+    const draft = await getDraft(currentLeague.draft_id).catch(() => null);
+    draftStartTime = draft?.start_time ?? null;
+  }
+
+  const history: LeagueHistory = {
+    managers,
+    seasons,
+    leagueName: currentLeague?.name ?? "",
+    leagueAvatar: currentLeague?.avatar ?? null,
+    draftStartTime,
+  };
   cacheSet(cacheKey, history);
   return history;
 }

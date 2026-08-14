@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { useLeagueHistory } from "../lib/useLeagueHistory";
 
 const navItems = [
   { to: "/", label: "Home", end: true },
@@ -8,15 +10,37 @@ const navItems = [
   { to: "/predictions", label: "Predictions" },
 ];
 
+const FALLBACK_NAME = "Bears Beats Battlestar Galactica";
+
+/** The league's own logo from Sleeper, falling back to 🏈 if it can't load. */
+function LeagueLogo({ avatar }: { avatar: string | null }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!avatar || failed) {
+    return <span className="text-xl">🏈</span>;
+  }
+  return (
+    <img
+      src={`https://sleepercdn.com/avatars/${avatar}`}
+      alt=""
+      onError={() => setFailed(true)}
+      className="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-line"
+    />
+  );
+}
+
 export function Layout() {
+  // Cached by useLeagueHistory, so this doesn't cost an extra fetch.
+  const { data } = useLeagueHistory();
+
   return (
     <div className="min-h-screen bg-ink">
-      <header className="border-b border-line bg-surface">
+      <header className="border-b border-line bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <NavLink to="/" className="flex items-center gap-2">
-            <span className="text-xl">🏈</span>
+          <NavLink to="/" className="flex items-center gap-2.5">
+            <LeagueLogo avatar={data?.leagueAvatar ?? null} />
             <span className="text-sm font-semibold text-primary sm:text-base">
-              Bears Beats Battlestar Galactica
+              {data?.leagueName || FALLBACK_NAME}
             </span>
           </NavLink>
           <nav className="flex gap-1">
@@ -27,9 +51,7 @@ export function Layout() {
                 end={item.end}
                 className={({ isActive }) =>
                   `rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-neon/10 text-neon"
-                      : "text-body hover:bg-surface-2"
+                    isActive ? "bg-neon/10 text-neon" : "text-body hover:bg-surface-2"
                   }`
                 }
               >
@@ -48,7 +70,7 @@ export function Layout() {
           href="https://sleeper.com"
           target="_blank"
           rel="noreferrer"
-          className="underline hover:text-muted"
+          className="underline hover:text-body"
         >
           Sleeper
         </a>

@@ -9,10 +9,20 @@ export interface SleeperLeague {
   status: string; // "pre_draft" | "drafting" | "in_season" | "complete"
   previous_league_id: string | null;
   total_rosters: number;
+  /** League logo id; render via https://sleepercdn.com/avatars/<avatar>. */
+  avatar: string | null;
+  draft_id: string | null;
   settings: {
     playoff_week_start?: number;
     [key: string]: unknown;
   };
+}
+
+export interface SleeperDraft {
+  draft_id: string;
+  status: string; // "pre_draft" | "drafting" | "complete"
+  /** Scheduled start, epoch milliseconds. Null until the commissioner sets it. */
+  start_time: number | null;
 }
 
 export interface SleeperUser {

@@ -2,7 +2,7 @@ import type { LeagueHistory, Manager } from "./history";
 import { getChampionHistory } from "./champions";
 import { computeAllTimePowerRankings } from "./powerRankings";
 import { computeCurrentStreaks } from "./streaks";
-import { DRAFT_DATE } from "./constants";
+import { resolveDraftDate } from "./constants";
 
 export interface Headline {
   tag: string; // short label, e.g. "DRAFT DAY", "STREAK WATCH"
@@ -64,7 +64,7 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
   // 1. Draft countdown (not about a specific manager)
   const latestSeason = history.seasons[history.seasons.length - 1];
   if (latestSeason?.status === "pre_draft" || latestSeason?.status === "drafting") {
-    const days = daysUntil(DRAFT_DATE);
+    const days = daysUntil(resolveDraftDate(history.draftStartTime));
     headlines.push(
       days > 0
         ? {

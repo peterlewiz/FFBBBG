@@ -8,7 +8,7 @@ import { PastChampionsPanel } from "../components/PastChampionsPanel";
 import { Countdown } from "../components/Countdown";
 import { HeadlinesTicker } from "../components/HeadlinesTicker";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
-import { DRAFT_DATE } from "../lib/constants";
+import { resolveDraftDate } from "../lib/constants";
 
 export function Home() {
   const { data, loading, error } = useLeagueHistory();
@@ -38,7 +38,7 @@ export function Home() {
         </div>
         {seasonNotStarted && (
           <div className="w-full sm:w-auto">
-            <Countdown target={DRAFT_DATE} label="Draft Day" />
+            <Countdown target={resolveDraftDate(data.draftStartTime)} label="Draft Day" />
           </div>
         )}
       </div>
