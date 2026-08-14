@@ -4,9 +4,12 @@ import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { computeEloRatings, getEloLeaderboard, winProbability } from "../lib/elo";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor } from "../lib/teamColors";
+import { useNflState } from "../lib/useNflState";
 
 export function Elo() {
   const { data, loading, error } = useLeagueHistory();
+  const { state: nflState } = useNflState();
+  const targetWeek = nflState?.week ?? null;
 
   const eloResult = useMemo(() => (data ? computeEloRatings(data) : null), [data]);
   const leaderboard = useMemo(
@@ -37,17 +40,16 @@ export function Elo() {
   }, [data, eloResult]);
 
   const upcomingMatchups = useMemo(() => {
-    if (!data || !eloResult) return [];
+    if (!data || !eloResult || targetWeek === null) return [];
     const currentSeason = data.seasons[data.seasons.length - 1];
     if (!currentSeason || currentSeason.weeks.length === 0) return [];
 
-    const maxWeek = Math.max(...currentSeason.weeks.map((w) => w.week));
     const rosterToUser = new Map(
       currentSeason.rosters
         .filter((r) => r.ownerUserId)
         .map((r) => [r.rosterId, r.ownerUserId as string]),
     );
-    const weekRows = currentSeason.weeks.filter((w) => w.week === maxWeek);
+    const weekRows = currentSeason.weeks.filter((w) => w.week === targetWeek);
     const byMatchup = new Map<number, typeof weekRows>();
     for (const row of weekRows) {
       if (row.matchupId === null) continue;
@@ -72,7 +74,7 @@ export function Elo() {
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [data, eloResult]);
+  }, [data, eloResult, targetWeek]);
 
   if (loading) return <LoadingScreen />;
   if (error || !data) return <ErrorScreen message={error ?? "Unknown error"} />;
@@ -93,7 +95,7 @@ export function Elo() {
         <div className="rounded-2xl border border-line bg-surface shadow-sm">
           <div className="border-b border-line px-5 py-4">
             <h2 className="text-lg font-semibold text-primary">
-              Elo Win Probability — This Week
+              Elo Win Probability — Week {targetWeek}
             </h2>
           </div>
           <ul className="divide-y divide-line">

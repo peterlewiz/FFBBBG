@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { usePredictions } from "../lib/usePredictions";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
-import { getNflState } from "../api/sleeper";
-import type { SleeperNflState } from "../api/types";
+import { useNflState } from "../lib/useNflState";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
 import { computeLeaderboard, upsertPrediction, type PredictionRow } from "../lib/predictions";
 import { ROOT_LEAGUE_ID } from "../lib/history";
@@ -17,15 +16,7 @@ export function Predictions() {
   const { data, loading, error } = useLeagueHistory();
   const predictionsState = usePredictions(ROOT_LEAGUE_ID);
 
-  const [nflState, setNflState] = useState<SleeperNflState | null>(null);
-  const [nflStateError, setNflStateError] = useState<string | null>(null);
-  useEffect(() => {
-    getNflState()
-      .then(setNflState)
-      .catch((err: unknown) =>
-        setNflStateError(err instanceof Error ? err.message : "Failed to load current week"),
-      );
-  }, []);
+  const { state: nflState, error: nflStateError } = useNflState();
 
   const [pickerUserId, setPickerUserId] = useState<string | null>(() =>
     typeof window !== "undefined" ? window.localStorage.getItem(PICKER_STORAGE_KEY) : null,
