@@ -35,22 +35,28 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-ink">
-      <header className="border-b border-line bg-surface/80 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <NavLink to="/" className="flex items-center gap-2.5">
+      {/*
+       * Two rows on phones (title, then a scrollable nav) collapsing to a
+       * single row from `sm` up. Five nav items plus the league name do not
+       * fit on a 375px viewport in one row - that combination was pushing
+       * the whole page into horizontal scroll.
+       */}
+      <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+          <NavLink to="/" className="flex min-w-0 items-center gap-2.5">
             <LeagueLogo avatar={data?.leagueAvatar ?? null} />
-            <span className="text-sm font-semibold text-primary sm:text-base">
+            <span className="truncate text-sm font-semibold text-primary sm:text-base">
               {data?.leagueName || FALLBACK_NAME}
             </span>
           </NavLink>
-          <nav className="flex gap-1">
+          <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:overflow-visible sm:px-0">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  `shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     isActive ? "bg-neon/10 text-neon" : "text-body hover:bg-surface-2"
                   }`
                 }

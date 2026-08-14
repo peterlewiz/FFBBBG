@@ -202,14 +202,14 @@ export function Predictions() {
               );
               const isSaving = saving === `${targetWeek}:${m.matchupId}`;
               return (
-                <li key={m.matchupId} className="flex items-center gap-3 px-5 py-3">
+                <li key={m.matchupId} className="flex items-center gap-2 px-4 py-3 sm:gap-3 sm:px-5">
                   <PickButton
                     manager={m.managerA}
                     selected={existingPick?.picked_user_id === m.managerA.userId}
                     disabled={m.locked || isSaving}
                     onClick={() => handlePick(m.matchupId, m.managerA.userId)}
                   />
-                  <span className="shrink-0 text-xs font-medium uppercase text-muted">
+                  <span className="shrink-0 text-[10px] font-medium uppercase text-muted sm:text-xs">
                     vs
                   </span>
                   <PickButton
@@ -218,11 +218,7 @@ export function Predictions() {
                     disabled={m.locked || isSaving}
                     onClick={() => handlePick(m.matchupId, m.managerB.userId)}
                   />
-                  {m.locked && (
-                    <span className="shrink-0 text-xs text-muted">
-                      🔒 locked
-                    </span>
-                  )}
+                  {m.locked && <span className="shrink-0 text-xs text-muted">🔒</span>}
                 </li>
               );
             })}

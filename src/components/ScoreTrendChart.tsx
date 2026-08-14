@@ -31,8 +31,10 @@ export function ScoreTrendChart({
   yLabel?: string;
 }) {
   return (
-    <ResponsiveContainer width="100%" height={360}>
-      <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+    // Height is CSS-driven so it can shrink on phones without a JS media query.
+    <div className="h-[260px] w-full sm:h-[360px]">
+      <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
         <XAxis dataKey={xKey} stroke={AXIS_COLOR} fontSize={12} tickLine={false} />
         <YAxis
@@ -71,6 +73,7 @@ export function ScoreTrendChart({
           />
         ))}
       </LineChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </div>
   );
 }

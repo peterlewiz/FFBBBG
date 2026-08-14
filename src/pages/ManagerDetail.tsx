@@ -123,52 +123,48 @@ export function ManagerDetail() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+      <div className="rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-5 py-4">
-          <h2 className="text-lg font-semibold text-primary">
-            Season by season
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Season by season</h2>
         </div>
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
-            <tr>
-              <th className="px-4 py-3 font-medium">Season</th>
-              <th className="px-4 py-3 font-medium">Team Name</th>
-              <th className="px-4 py-3 font-medium">Record</th>
-              <th className="px-4 py-3 font-medium">PF</th>
-              <th className="px-4 py-3 font-medium">PA</th>
-              <th className="px-4 py-3 font-medium">Playoffs</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {seasonLines
-              .slice()
-              .reverse()
-              .map((l) => (
-                <tr key={l.season}>
-                  <td className="px-4 py-3 font-medium text-primary">
-                    {l.season}
-                  </td>
-                  <td className="px-4 py-3 text-body">
-                    {manager.teamNameBySeason[l.season] ?? manager.teamName}
-                  </td>
-                  <td className="px-4 py-3 text-body">
-                    {l.wins}-{l.losses}
-                    {l.ties > 0 ? `-${l.ties}` : ""}
-                  </td>
-                  <td className="px-4 py-3 text-body">
-                    {l.pointsFor.toFixed(1)}
-                  </td>
-                  <td className="px-4 py-3 text-body">
-                    {l.pointsAgainst.toFixed(1)}
-                  </td>
-                  <td className="px-4 py-3 text-body">
-                    {l.madePlayoffs ? "✅" : "—"}
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[38rem] text-left text-sm">
+            <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-3 py-3 font-medium sm:px-4">Season</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Team Name</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Record</th>
+                <th className="px-3 py-3 font-medium sm:px-4">PF</th>
+                <th className="px-3 py-3 font-medium sm:px-4">PA</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Playoffs</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {seasonLines
+                .slice()
+                .reverse()
+                .map((l) => (
+                  <tr key={l.season}>
+                    <td className="px-3 py-3 font-medium text-primary sm:px-4">{l.season}</td>
+                    <td className="px-3 py-3 text-body sm:px-4">
+                      {manager.teamNameBySeason[l.season] ?? manager.teamName}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
+                      {l.wins}-{l.losses}
+                      {l.ties > 0 ? `-${l.ties}` : ""}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
+                      {l.pointsFor.toFixed(1)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
+                      {l.pointsAgainst.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-3 text-body sm:px-4">{l.madePlayoffs ? "✅" : "—"}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {chartData.length > 0 && (

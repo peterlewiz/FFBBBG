@@ -101,47 +101,49 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
                 </p>
               )}
 
-              <table className="w-full border-t border-line text-left text-sm">
-                <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Season</th>
-                    <th className="px-4 py-2 font-medium">Week</th>
-                    <th className="px-4 py-2 font-medium">{managerA.displayName}</th>
-                    <th className="px-4 py-2 font-medium">{managerB.displayName}</th>
-                    <th className="px-4 py-2 font-medium">Winner</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {result.games
-                    .slice()
-                    .reverse()
-                    .map((g, i) => {
-                      const winner =
-                        g.pointsA > g.pointsB
-                          ? managerA.displayName
-                          : g.pointsB > g.pointsA
-                            ? managerB.displayName
-                            : "Tie";
-                      return (
-                        <tr key={i}>
-                          <td className="px-4 py-2 text-body">{g.season}</td>
-                          <td className="px-4 py-2 text-body">{g.week}</td>
-                          <td
-                            className={`px-4 py-2 ${g.pointsA > g.pointsB ? "font-semibold text-primary" : "text-body"}`}
-                          >
-                            {g.pointsA.toFixed(1)}
-                          </td>
-                          <td
-                            className={`px-4 py-2 ${g.pointsB > g.pointsA ? "font-semibold text-primary" : "text-body"}`}
-                          >
-                            {g.pointsB.toFixed(1)}
-                          </td>
-                          <td className="px-4 py-2 text-body">{winner}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto border-t border-line">
+                <table className="w-full min-w-[30rem] text-left text-sm">
+                  <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="px-3 py-2 font-medium sm:px-4">Season</th>
+                      <th className="px-3 py-2 font-medium sm:px-4">Wk</th>
+                      <th className="px-3 py-2 font-medium sm:px-4">{managerA.displayName}</th>
+                      <th className="px-3 py-2 font-medium sm:px-4">{managerB.displayName}</th>
+                      <th className="px-3 py-2 font-medium sm:px-4">Winner</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {result.games
+                      .slice()
+                      .reverse()
+                      .map((g, i) => {
+                        const winner =
+                          g.pointsA > g.pointsB
+                            ? managerA.displayName
+                            : g.pointsB > g.pointsA
+                              ? managerB.displayName
+                              : "Tie";
+                        return (
+                          <tr key={i}>
+                            <td className="px-3 py-2 text-body sm:px-4">{g.season}</td>
+                            <td className="px-3 py-2 text-body sm:px-4">{g.week}</td>
+                            <td
+                              className={`whitespace-nowrap px-3 py-2 sm:px-4 ${g.pointsA > g.pointsB ? "font-semibold text-primary" : "text-body"}`}
+                            >
+                              {g.pointsA.toFixed(1)}
+                            </td>
+                            <td
+                              className={`whitespace-nowrap px-3 py-2 sm:px-4 ${g.pointsB > g.pointsA ? "font-semibold text-primary" : "text-body"}`}
+                            >
+                              {g.pointsB.toFixed(1)}
+                            </td>
+                            <td className="px-3 py-2 text-body sm:px-4">{winner}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </>

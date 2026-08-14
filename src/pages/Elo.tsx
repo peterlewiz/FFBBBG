@@ -98,14 +98,17 @@ export function Elo() {
           </div>
           <ul className="divide-y divide-line">
             {upcomingMatchups.map((m, i) => (
-              <li key={i} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className="font-medium text-primary">
+              <li
+                key={i}
+                className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3 text-sm sm:px-5"
+              >
+                <span className="truncate font-medium text-primary">
                   {m.managerA.displayName}
                 </span>
-                <span className="text-xs font-semibold text-neon">
+                <span className="whitespace-nowrap text-xs font-semibold text-neon">
                   {(m.probA * 100).toFixed(0)}% – {((1 - m.probA) * 100).toFixed(0)}%
                 </span>
-                <span className="font-medium text-primary">
+                <span className="truncate text-right font-medium text-primary">
                   {m.managerB.displayName}
                 </span>
               </li>

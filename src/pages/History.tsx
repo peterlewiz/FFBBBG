@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { HeadToHeadPanel } from "../components/HeadToHeadPanel";
+import { TeamBadge } from "../components/TeamBadge";
 
 export function History() {
   const { data, loading, error } = useLeagueHistory();
@@ -78,15 +79,16 @@ export function History() {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-        <table className="w-full text-left text-sm">
+      {/* Scrolls inside its own card on narrow screens instead of widening the page. */}
+      <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
+        <table className="w-full min-w-[32rem] text-left text-sm">
           <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
             <tr>
-              <th className="px-4 py-3 font-medium">#</th>
-              <th className="px-4 py-3 font-medium">Manager</th>
-              <th className="px-4 py-3 font-medium">Record</th>
-              <th className="px-4 py-3 font-medium">PF</th>
-              <th className="px-4 py-3 font-medium">PA</th>
+              <th className="px-3 py-3 font-medium sm:px-4">#</th>
+              <th className="px-3 py-3 font-medium sm:px-4">Manager</th>
+              <th className="px-3 py-3 font-medium sm:px-4">Record</th>
+              <th className="px-3 py-3 font-medium sm:px-4">PF</th>
+              <th className="px-3 py-3 font-medium sm:px-4">PA</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -95,29 +97,36 @@ export function History() {
                 row.manager.teamNameBySeason[activeSeason.season] ?? row.manager.teamName;
               return (
                 <tr key={row.rosterId}>
-                  <td className="px-4 py-3 text-muted">{i + 1}</td>
-                  <td className="px-4 py-3">
-                    <Link
-                      to={`/manager/${row.manager.userId}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {row.isChampion && <span className="mr-1.5">🏆</span>}
-                      {row.manager.displayName}
-                    </Link>
-                    {seasonTeamName !== row.manager.displayName && (
-                      <p className="text-xs text-muted">
-                        {seasonTeamName}
-                      </p>
-                    )}
+                  <td className="px-3 py-3 text-muted sm:px-4">{i + 1}</td>
+                  <td className="px-3 py-3 sm:px-4">
+                    <div className="flex items-center gap-2">
+                      <TeamBadge
+                        userId={row.manager.userId}
+                        displayName={row.manager.displayName}
+                        size={22}
+                      />
+                      <div className="min-w-0">
+                        <Link
+                          to={`/manager/${row.manager.userId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {row.isChampion && <span className="mr-1">🏆</span>}
+                          {row.manager.displayName}
+                        </Link>
+                        {seasonTeamName !== row.manager.displayName && (
+                          <p className="truncate text-xs text-muted">{seasonTeamName}</p>
+                        )}
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-body">
+                  <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
                     {row.wins}-{row.losses}
                     {row.ties > 0 ? `-${row.ties}` : ""}
                   </td>
-                  <td className="px-4 py-3 text-body">
+                  <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
                     {row.pointsFor.toFixed(1)}
                   </td>
-                  <td className="px-4 py-3 text-body">
+                  <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
                     {row.pointsAgainst.toFixed(1)}
                   </td>
                 </tr>
