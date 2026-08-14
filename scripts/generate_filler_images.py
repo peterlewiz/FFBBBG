@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Generate placeholder hero images for each manager: sleek dark cards
-with that manager's signature neon color (kept in sync with
-src/lib/teamColors.ts) - neon perspective grid, glowing wireframe
-football, and glowing title text. Meant to be replaced later with real
-AI-generated art; swapping a file at the same path needs no code change.
+"""Generate each manager's hero card: a sleek dark banner in their
+signature neon color (kept in sync with src/lib/teamColors.ts) - neon
+perspective grid, glowing title text, and their profile picture ringed
+in their color. Falls back to a glowing wireframe football for any
+manager who has no picture in public/manager-avatars/ yet.
 
 Run:  python3 scripts/generate_filler_images.py
 """
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import os
+
+AVATAR_DIR = "/Users/plewiz/Documents/sleeper-league-site/public/manager-avatars"
 
 # (userId, displayName, neon hex) - colors mirror src/lib/teamColors.ts
 MANAGERS = [
@@ -95,6 +97,37 @@ def draw_football(size, color, center, ball_w, ball_h):
     return layer
 
 
+def draw_avatar(size, color, center, diameter, avatar_path):
+    """The manager's picture as a circle with a neon ring, or None if we
+    don't have a picture for them."""
+    if not os.path.exists(avatar_path):
+        return None
+
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    av = Image.open(avatar_path).convert("RGB").resize((diameter, diameter), Image.LANCZOS)
+
+    # circular mask, supersampled so the edge isn't jagged
+    mask = Image.new("L", (diameter * 4, diameter * 4), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, diameter * 4 - 1, diameter * 4 - 1], fill=255)
+    mask = mask.resize((diameter, diameter), Image.LANCZOS)
+
+    cx, cy = int(center[0] - diameter / 2), int(center[1] - diameter / 2)
+    layer.paste(av, (cx, cy), mask)
+    return layer
+
+
+def draw_avatar_ring(size, color, center, diameter):
+    ring = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(ring)
+    r = diameter / 2
+    d.ellipse(
+        [center[0] - r, center[1] - r, center[0] + r, center[1] + r],
+        outline=(*color, 255),
+        width=6,
+    )
+    return ring
+
+
 def draw_text_layer(size, text, color, font_path, y_center, left_x, max_width):
     """Left-aligned title text, auto-shrunk to fit its own column so it
     never collides with the football on the right."""
@@ -138,9 +171,17 @@ def build(user_id, name, hex_color):
     TEXT_MAX_W = W * 0.56
     BALL_CX = W * 0.82
 
-    ball_w = W * 0.20
-    ball = draw_football((W, H), color, (BALL_CX, H * 0.42), ball_w, ball_w * 0.58)
-    img = Image.alpha_composite(img, glow(ball, 14))
+    avatar_path = os.path.join(AVATAR_DIR, f"{user_id}.png")
+    avatar_layer = draw_avatar((W, H), color, (BALL_CX, H * 0.42), int(H * 0.56), avatar_path)
+    if avatar_layer is not None:
+        ring = draw_avatar_ring((W, H), color, (BALL_CX, H * 0.42), int(H * 0.56))
+        img = Image.alpha_composite(img, glow(ring, 16))  # bloom behind
+        img = Image.alpha_composite(img, avatar_layer)
+        img = Image.alpha_composite(img, ring)  # crisp ring on top
+    else:
+        ball_w = W * 0.20
+        ball = draw_football((W, H), color, (BALL_CX, H * 0.42), ball_w, ball_w * 0.58)
+        img = Image.alpha_composite(img, glow(ball, 14))
 
     # glowing name
     text_layer, _ = draw_text_layer((W, H), name, color, FONT_BLACK, H * 0.42, TEXT_LEFT, TEXT_MAX_W)
@@ -176,15 +217,6 @@ def build(user_id, name, hex_color):
     for y in range(0, H, 3):
         sd.line([(0, y), (W, y)], fill=(255, 255, 255, 8), width=1)
     img = Image.alpha_composite(img, scan)
-
-    # placeholder tag
-    tag = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    td = ImageDraw.Draw(tag)
-    tag_font = ImageFont.truetype(FONT_BOLD, 18)
-    label = "PLACEHOLDER"
-    tb = td.textbbox((0, 0), label, font=tag_font)
-    td.text((W - (tb[2] - tb[0]) - 30, H - 42), label, font=tag_font, fill=(*color, 150))
-    img = Image.alpha_composite(img, tag)
 
     out_path = os.path.join(OUT_DIR, f"{user_id}.jpg")
     img.convert("RGB").save(out_path, "JPEG", quality=90)
