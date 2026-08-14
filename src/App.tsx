@@ -4,6 +4,7 @@ import { Home } from "./pages/Home";
 import { History } from "./pages/History";
 import { Graphs } from "./pages/Graphs";
 import { Predictions } from "./pages/Predictions";
+import { ManagerDetail } from "./pages/ManagerDetail";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="history" element={<History />} />
         <Route path="graphs" element={<Graphs />} />
         <Route path="predictions" element={<Predictions />} />
+        <Route path="manager/:userId" element={<ManagerDetail />} />
       </Route>
     </Routes>
   );

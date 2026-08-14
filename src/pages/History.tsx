@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 
@@ -86,25 +87,39 @@ export function History() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {standings.map((row, i) => (
-              <tr key={row.rosterId}>
-                <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{i + 1}</td>
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                  {row.isChampion && <span className="mr-1.5">🏆</span>}
-                  {row.manager.teamName}
-                </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                  {row.wins}-{row.losses}
-                  {row.ties > 0 ? `-${row.ties}` : ""}
-                </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                  {row.pointsFor.toFixed(1)}
-                </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                  {row.pointsAgainst.toFixed(1)}
-                </td>
-              </tr>
-            ))}
+            {standings.map((row, i) => {
+              const seasonTeamName =
+                row.manager.teamNameBySeason[activeSeason.season] ?? row.manager.teamName;
+              return (
+                <tr key={row.rosterId}>
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{i + 1}</td>
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/manager/${row.manager.userId}`}
+                      className="font-medium text-slate-900 hover:underline dark:text-white"
+                    >
+                      {row.isChampion && <span className="mr-1.5">🏆</span>}
+                      {row.manager.displayName}
+                    </Link>
+                    {seasonTeamName !== row.manager.displayName && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {seasonTeamName}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {row.wins}-{row.losses}
+                    {row.ties > 0 ? `-${row.ties}` : ""}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {row.pointsFor.toFixed(1)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {row.pointsAgainst.toFixed(1)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

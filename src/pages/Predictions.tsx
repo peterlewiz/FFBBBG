@@ -20,7 +20,7 @@ export function Predictions() {
     const userIds = Object.keys(data.managers).sort();
     const series: ChartSeries[] = userIds.map((userId, i) => ({
       key: userId,
-      name: data.managers[userId]?.teamName ?? userId,
+      name: data.managers[userId]?.displayName ?? userId,
       color: CHART_PALETTE[i % CHART_PALETTE.length],
     }));
     const chartData = eloResult.history.map((snap) => {
@@ -99,13 +99,13 @@ export function Predictions() {
             {upcomingMatchups.map((m, i) => (
               <li key={i} className="flex items-center justify-between px-5 py-3 text-sm">
                 <span className="font-medium text-slate-900 dark:text-white">
-                  {m.managerA.teamName}
+                  {m.managerA.displayName}
                 </span>
                 <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                   {(m.probA * 100).toFixed(0)}% – {((1 - m.probA) * 100).toFixed(0)}%
                 </span>
                 <span className="font-medium text-slate-900 dark:text-white">
-                  {m.managerB.teamName}
+                  {m.managerB.displayName}
                 </span>
               </li>
             ))}
@@ -124,7 +124,7 @@ export function Predictions() {
                 {i + 1}
               </span>
               <span className="flex-1 truncate text-sm font-medium text-slate-900 dark:text-white">
-                {entry.manager.teamName}
+                {entry.manager.displayName}
               </span>
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {entry.rating}

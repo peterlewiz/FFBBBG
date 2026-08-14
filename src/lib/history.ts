@@ -13,9 +13,13 @@ export const ROOT_LEAGUE_ID = "1389753876558680064";
 export interface Manager {
   /** Sleeper user_id - stable across seasons even if team name changes. */
   userId: string;
+  /** Sleeper username - stable, unlike team name which managers rename yearly. */
   displayName: string;
+  /** Most recent season's team name (falls back to username if never set). */
   teamName: string;
   avatar: string | null;
+  /** Team name for each season this manager played, keyed by season year. */
+  teamNameBySeason: Record<string, string>;
 }
 
 export interface WeekMatchup {
@@ -149,13 +153,22 @@ export async function loadLeagueHistory(
     seasons.push(season);
 
     for (const u of users) {
-      // Keep the most recent display/team name we've seen for each manager.
-      managers[u.user_id] = {
-        userId: u.user_id,
-        displayName: u.display_name,
-        teamName: u.metadata?.team_name || u.display_name,
-        avatar: u.avatar,
-      };
+      const teamNameThisSeason = u.metadata?.team_name || u.display_name;
+      const existing = managers[u.user_id];
+      if (existing) {
+        // We walk newest -> oldest, so only backfill this season's team
+        // name; never overwrite displayName/avatar/teamName, which were
+        // already set from a more recent season.
+        existing.teamNameBySeason[season.season] = teamNameThisSeason;
+      } else {
+        managers[u.user_id] = {
+          userId: u.user_id,
+          displayName: u.display_name,
+          teamName: teamNameThisSeason,
+          avatar: u.avatar,
+          teamNameBySeason: { [season.season]: teamNameThisSeason },
+        };
+      }
     }
 
     currentId = previousLeagueId;

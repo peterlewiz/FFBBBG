@@ -19,7 +19,7 @@ function useAllTimeStats(data: LeagueHistory | null) {
 
       for (const w of season.weeks) {
         const userId = rosterToUser.get(w.rosterId);
-        const name = userId ? data.managers[userId]?.teamName : undefined;
+        const name = userId ? data.managers[userId]?.displayName : undefined;
         if (!name) continue;
         if (w.points > highest.points) {
           highest = { points: w.points, manager: name, season: season.season, week: w.week };
@@ -48,8 +48,8 @@ function useAllTimeStats(data: LeagueHistory | null) {
           const loserUser = rosterToUser.get(loser.rosterId);
           biggestBlowout = {
             margin,
-            winner: winnerUser ? data.managers[winnerUser]?.teamName ?? "?" : "?",
-            loser: loserUser ? data.managers[loserUser]?.teamName ?? "?" : "?",
+            winner: winnerUser ? data.managers[winnerUser]?.displayName ?? "?" : "?",
+            loser: loserUser ? data.managers[loserUser]?.displayName ?? "?" : "?",
             season: season.season,
             week: a.week,
           };
@@ -87,7 +87,7 @@ export function Graphs() {
 
     const series: ChartSeries[] = userIds.map((userId, i) => ({
       key: userId,
-      name: data.managers[userId]?.teamName ?? userId,
+      name: data.managers[userId]?.displayName ?? userId,
       color: CHART_PALETTE[i % CHART_PALETTE.length],
     }));
 

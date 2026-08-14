@@ -4,7 +4,9 @@ import { computeAllTimePowerRankings } from "../lib/powerRankings";
 import { getChampionHistory } from "../lib/champions";
 import { PowerRankingsWidget } from "../components/PowerRankingsWidget";
 import { PastChampionsPanel } from "../components/PastChampionsPanel";
+import { Countdown } from "../components/Countdown";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
+import { DRAFT_DATE } from "../lib/constants";
 
 export function Home() {
   const { data, loading, error } = useLeagueHistory();
@@ -21,14 +23,21 @@ export function Home() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
-          League Home
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {data.seasons[0]?.season}–{latestSeason?.season} · {Object.keys(data.managers).length}{" "}
-          managers
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+            League Home
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {data.seasons[0]?.season}–{latestSeason?.season} ·{" "}
+            {Object.keys(data.managers).length} managers
+          </p>
+        </div>
+        {seasonNotStarted && (
+          <div className="w-full sm:w-auto">
+            <Countdown target={DRAFT_DATE} label="Draft Day" />
+          </div>
+        )}
       </div>
 
       {seasonNotStarted && (
