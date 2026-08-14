@@ -4,6 +4,7 @@ import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { buildManagerSeasonLines } from "../lib/powerRankings";
 import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
+import { countTitles } from "../lib/champions";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
@@ -70,10 +71,8 @@ export function ManagerDetail() {
   const careerWinPct = totalGames > 0 ? (totalWins + totalTies * 0.5) / totalGames : 0;
   const careerPF = seasonLines.reduce((a, l) => a + l.pointsFor, 0);
   const careerPA = seasonLines.reduce((a, l) => a + l.pointsAgainst, 0);
-  const titles = data.seasons.filter((s) => {
-    const roster = s.rosters.find((r) => r.ownerUserId === userId);
-    return roster && s.championRosterId === roster.rosterId;
-  }).length;
+  // Shared helper so this includes pre-Sleeper titles too.
+  const titles = countTitles(data, userId);
 
   return (
     <div className="flex flex-col gap-6">

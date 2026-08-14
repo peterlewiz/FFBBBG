@@ -1,9 +1,12 @@
 import type { LeagueHistory, Manager, SeasonData } from "./history";
+import { LEGACY_SEASONS } from "./legacySeasons";
 
 export interface ChampionEntry {
   season: string;
   champion: Manager | null;
   runnerUp: Manager | null;
+  /** Set for seasons played before Sleeper, e.g. "ESPN". */
+  platform?: string;
 }
 
 function findManagerForRoster(
@@ -17,16 +20,32 @@ function findManagerForRoster(
   return managers[roster.ownerUserId] ?? null;
 }
 
-/** One entry per completed season that has a resolved champion, newest first. */
+/**
+ * One entry per season with a resolved champion, newest first - Sleeper
+ * seasons plus the hand-entered pre-Sleeper ones (see legacySeasons.ts).
+ */
 export function getChampionHistory(history: LeagueHistory): ChampionEntry[] {
-  return history.seasons
+  const fromSleeper: ChampionEntry[] = history.seasons
     .filter((s) => s.status === "complete" && s.championRosterId !== null)
     .map((s) => ({
       season: s.season,
       champion: findManagerForRoster(s, history.managers, s.championRosterId),
       runnerUp: findManagerForRoster(s, history.managers, s.runnerUpRosterId),
-    }))
-    .reverse();
+    }));
+
+  const fromLegacy: ChampionEntry[] = LEGACY_SEASONS.filter(
+    // Skip any legacy season Sleeper already covers, so a season can't be double counted.
+    (l) => !history.seasons.some((s) => s.season === l.season),
+  ).map((l) => ({
+    season: l.season,
+    champion: l.championUserId ? history.managers[l.championUserId] ?? null : null,
+    runnerUp: l.runnerUpUserId ? history.managers[l.runnerUpUserId] ?? null : null,
+    platform: l.platform,
+  }));
+
+  return [...fromSleeper, ...fromLegacy].sort(
+    (a, b) => Number(b.season) - Number(a.season),
+  );
 }
 
 export interface ChampionshipCount {
@@ -53,4 +72,12 @@ export function getChampionshipCounts(history: LeagueHistory): ChampionshipCount
     }
   }
   return Array.from(counts.values()).sort((a, b) => b.titles - a.titles);
+}
+
+/**
+ * How many titles a manager has won, across Sleeper and pre-Sleeper
+ * seasons. Single source of truth so every surface agrees.
+ */
+export function countTitles(history: LeagueHistory, userId: string): number {
+  return getChampionHistory(history).filter((c) => c.champion?.userId === userId).length;
 }

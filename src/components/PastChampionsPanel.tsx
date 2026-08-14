@@ -44,10 +44,12 @@ export function PastChampionsPanel({
                   <p className="truncate text-sm font-medium text-primary">
                     {c.champion?.displayName ?? "Unknown"}
                   </p>
-                  {c.runnerUp && (
-                    <p className="truncate text-xs text-muted">
-                      beat {c.runnerUp.displayName}
-                    </p>
+                  {c.runnerUp ? (
+                    <p className="truncate text-xs text-muted">beat {c.runnerUp.displayName}</p>
+                  ) : (
+                    c.platform && (
+                      <p className="truncate text-xs text-muted">on {c.platform}</p>
+                    )
                   )}
                 </div>
               </Link>
