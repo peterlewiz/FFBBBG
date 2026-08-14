@@ -60,3 +60,14 @@ export interface SleeperBracketMatch {
   l: number | null;
   p?: number;
 }
+
+// The league-agnostic "what week is it" clock Sleeper's own app uses.
+// This is the authoritative source for "the upcoming week to predict" -
+// unlike inferring it from matchup data, which is unreliable once a
+// season's full schedule (including unplayed future weeks) is loaded.
+export interface SleeperNflState {
+  week: number;
+  season: string;
+  season_type: string; // "pre" | "regular" | "post"
+  display_week: number;
+}

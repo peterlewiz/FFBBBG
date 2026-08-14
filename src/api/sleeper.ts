@@ -2,6 +2,7 @@ import type {
   SleeperBracketMatch,
   SleeperLeague,
   SleeperMatchup,
+  SleeperNflState,
   SleeperRoster,
   SleeperUser,
 } from "./types";
@@ -39,6 +40,11 @@ export function getWinnersBracket(
   leagueId: string,
 ): Promise<SleeperBracketMatch[]> {
   return getJson(`/league/${leagueId}/winners_bracket`);
+}
+
+/** The current NFL week, per Sleeper's own clock - not league-specific. */
+export function getNflState(): Promise<SleeperNflState> {
+  return getJson(`/state/nfl`);
 }
 
 const MAX_REGULAR_SEASON_PLUS_PLAYOFF_WEEKS = 18;

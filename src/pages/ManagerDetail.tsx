@@ -5,6 +5,10 @@ import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { buildManagerSeasonLines } from "../lib/powerRankings";
 import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
 import { CHART_PALETTE, ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
+import { usePredictions } from "../lib/usePredictions";
+import { computeLeaderboard } from "../lib/predictions";
+import { isSupabaseConfigured } from "../lib/supabaseClient";
+import { ROOT_LEAGUE_ID } from "../lib/history";
 
 export function ManagerDetail() {
   const { userId } = useParams<{ userId: string }>();
@@ -22,6 +26,13 @@ export function ManagerDetail() {
     const idx = board.findIndex((e) => e.manager.userId === userId);
     return idx === -1 ? null : { rating: board[idx].rating, rank: idx + 1, of: board.length };
   }, [data, eloResult, userId]);
+
+  const predictionsState = usePredictions(ROOT_LEAGUE_ID);
+  const predictionStats = useMemo(() => {
+    if (!data || !userId) return null;
+    const board = computeLeaderboard(data, predictionsState.data);
+    return board.find((e) => e.manager.userId === userId) ?? null;
+  }, [data, predictionsState.data, userId]);
 
   const { chartData, series } = useMemo(() => {
     if (!seasonLines.length) return { chartData: [], series: [] as ChartSeries[] };
@@ -96,13 +107,23 @@ export function ManagerDetail() {
         <StatTile label="Points Against" value={careerPA.toFixed(0)} />
       </div>
 
-      {eloRank && (
-        <StatTile
-          label="Elo Rating"
-          value={`${eloRank.rating}`}
-          sub={`#${eloRank.rank} of ${eloRank.of} managers`}
-          wide
-        />
+      {(eloRank || (isSupabaseConfigured && predictionStats && predictionStats.total > 0)) && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {eloRank && (
+            <StatTile
+              label="Elo Rating"
+              value={`${eloRank.rating}`}
+              sub={`#${eloRank.rank} of ${eloRank.of} managers`}
+            />
+          )}
+          {isSupabaseConfigured && predictionStats && predictionStats.total > 0 && (
+            <StatTile
+              label="Prediction Accuracy"
+              value={`${(predictionStats.accuracy * 100).toFixed(0)}%`}
+              sub={`${predictionStats.correct}/${predictionStats.total} correct picks`}
+            />
+          )}
+        </div>
       )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
