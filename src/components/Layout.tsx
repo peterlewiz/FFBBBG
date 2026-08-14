@@ -4,10 +4,10 @@ import { useLeagueHistory } from "../lib/useLeagueHistory";
 
 const navItems = [
   { to: "/", label: "Home", end: true },
+  { to: "/predictions", label: "Predictions" },
   { to: "/history", label: "History" },
   { to: "/graphs", label: "Graphs" },
   { to: "/elo", label: "Elo" },
-  { to: "/predictions", label: "Predictions" },
 ];
 
 const FALLBACK_NAME = "Bears Beats Battlestar Galactica";
