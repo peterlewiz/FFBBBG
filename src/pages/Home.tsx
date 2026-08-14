@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { computeAllTimePowerRankings } from "../lib/powerRankings";
 import { getChampionHistory } from "../lib/champions";
+import { generateHeadlines } from "../lib/headlines";
 import { PowerRankingsWidget } from "../components/PowerRankingsWidget";
 import { PastChampionsPanel } from "../components/PastChampionsPanel";
 import { Countdown } from "../components/Countdown";
+import { HeadlinesTicker } from "../components/HeadlinesTicker";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { DRAFT_DATE } from "../lib/constants";
 
@@ -13,6 +15,7 @@ export function Home() {
 
   const powerRankings = useMemo(() => (data ? computeAllTimePowerRankings(data) : []), [data]);
   const champions = useMemo(() => (data ? getChampionHistory(data) : []), [data]);
+  const headlines = useMemo(() => (data ? generateHeadlines(data) : []), [data]);
 
   if (loading) return <LoadingScreen />;
   if (error || !data) return <ErrorScreen message={error ?? "Unknown error"} />;
@@ -46,6 +49,8 @@ export function Home() {
           all completed seasons so far.
         </div>
       )}
+
+      <HeadlinesTicker headlines={headlines} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
