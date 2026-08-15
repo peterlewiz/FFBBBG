@@ -7,7 +7,7 @@ import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
 import { countTitles } from "../lib/champions";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor } from "../lib/teamColors";
-import { TeamBadge } from "../components/TeamBadge";
+import { ManagerCard } from "../components/ManagerCard";
 import { usePredictions } from "../lib/usePredictions";
 import { computeLeaderboard } from "../lib/predictions";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
@@ -80,47 +80,38 @@ export function ManagerDetail() {
         ← Back to home
       </Link>
 
-      <div className="flex items-center gap-4">
-        <TeamBadge userId={manager.userId} displayName={manager.displayName} size={64} />
-        <div>
-          <h1
-            className="text-2xl font-bold sm:text-3xl"
-            style={{ color: teamColor(manager.userId), textShadow: `0 0 24px ${teamColor(manager.userId)}55` }}
-          >
-            {manager.displayName}
-          </h1>
-          <p className="text-sm text-muted">
-            {titles > 0 && <span className="mr-1">{"🏆".repeat(Math.min(titles, 5))}</span>}
-            {seasonLines.length} seasons played
-          </p>
-        </div>
-      </div>
+      <ManagerCard
+        manager={manager}
+        stats={{
+          record: `${totalWins}-${totalLosses}${totalTies ? `-${totalTies}` : ""}`,
+          winPct: careerWinPct,
+          pointsFor: careerPF,
+          titles,
+          elo: eloRank?.rating ?? null,
+          eloRank: eloRank?.rank ?? null,
+          seasons: seasonLines.length,
+          trend: seasonLines.flatMap((l) => l.weeklyScores),
+        }}
+      />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatTile label="Career Record" value={`${totalWins}-${totalLosses}${totalTies ? `-${totalTies}` : ""}`} />
-        <StatTile label="Career Win %" value={`${(careerWinPct * 100).toFixed(0)}%`} />
-        <StatTile label="Points For" value={careerPF.toFixed(0)} />
         <StatTile label="Points Against" value={careerPA.toFixed(0)} />
+        <StatTile
+          label="Playoff Trips"
+          value={`${seasonLines.filter((l) => l.madePlayoffs).length}`}
+          sub={`of ${seasonLines.length} seasons`}
+        />
+        {eloRank && (
+          <StatTile label="Elo Rank" value={`#${eloRank.rank}`} sub={`of ${eloRank.of} managers`} />
+        )}
+        {isSupabaseConfigured && predictionStats && predictionStats.total > 0 && (
+          <StatTile
+            label="Prediction Accuracy"
+            value={`${(predictionStats.accuracy * 100).toFixed(0)}%`}
+            sub={`${predictionStats.correct}/${predictionStats.total} correct picks`}
+          />
+        )}
       </div>
-
-      {(eloRank || (isSupabaseConfigured && predictionStats && predictionStats.total > 0)) && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {eloRank && (
-            <StatTile
-              label="Elo Rating"
-              value={`${eloRank.rating}`}
-              sub={`#${eloRank.rank} of ${eloRank.of} managers`}
-            />
-          )}
-          {isSupabaseConfigured && predictionStats && predictionStats.total > 0 && (
-            <StatTile
-              label="Prediction Accuracy"
-              value={`${(predictionStats.accuracy * 100).toFixed(0)}%`}
-              sub={`${predictionStats.correct}/${predictionStats.total} correct picks`}
-            />
-          )}
-        </div>
-      )}
 
       <div className="rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-5 py-4">

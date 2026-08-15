@@ -1,9 +1,7 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import type { LeagueHistory } from "../lib/history";
 import { computeHeadToHead } from "../lib/headToHead";
-import { teamColor } from "../lib/teamColors";
-import { TeamBadge } from "./TeamBadge";
+import { FightCard } from "./FightCard";
 
 export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
   const managers = useMemo(
@@ -69,37 +67,36 @@ export function HeadToHeadPanel({ history }: { history: LeagueHistory }) {
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-px border-t border-line bg-line">
-                {[
-                  { m: managerA, wins: result.winsA, pts: result.totalPointsA },
-                  { m: managerB, wins: result.winsB, pts: result.totalPointsB },
-                ].map(({ m, wins, pts }) => (
-                  <div
-                    key={m.userId}
-                    className="bg-surface px-5 py-4 text-center"
-                    style={{ boxShadow: `inset 0 -3px 0 ${teamColor(m.userId)}` }}
-                  >
-                    <div className="flex items-center justify-center gap-2">
-                      <TeamBadge userId={m.userId} displayName={m.displayName} size={22} />
-                      <Link
-                        to={`/manager/${m.userId}`}
-                        className="text-sm font-semibold text-primary hover:underline"
-                      >
-                        {m.displayName}
-                      </Link>
-                    </div>
-                    <p className="mt-1 text-2xl font-bold" style={{ color: teamColor(m.userId) }}>
-                      {wins}
+              <div className="border-t border-line">
+                <FightCard
+                  centerLabel="All-time"
+                  centerValue={`${result.winsA}–${result.winsB}${result.ties ? ` (${result.ties}T)` : ""}`}
+                  left={{
+                    manager: managerA,
+                    headline: String(result.winsA),
+                    winner: result.winsA > result.winsB,
+                    stats: [
+                      { label: "PTS", value: result.totalPointsA.toFixed(0) },
+                      { label: "AVG", value: (result.totalPointsA / result.games.length).toFixed(1) },
+                    ],
+                  }}
+                  right={{
+                    manager: managerB,
+                    headline: String(result.winsB),
+                    winner: result.winsB > result.winsA,
+                    stats: [
+                      { label: "PTS", value: result.totalPointsB.toFixed(0) },
+                      { label: "AVG", value: (result.totalPointsB / result.games.length).toFixed(1) },
+                    ],
+                  }}
+                  footer={
+                    <p className="text-center text-xs text-muted">
+                      {result.games.length} meeting{result.games.length === 1 ? "" : "s"} since{" "}
+                      {result.games[0].season}
                     </p>
-                    <p className="text-xs text-muted">{pts.toFixed(1)} pts</p>
-                  </div>
-                ))}
+                  }
+                />
               </div>
-              {result.ties > 0 && (
-                <p className="border-t border-line px-5 py-2 text-center text-xs text-muted">
-                  {result.ties} tie{result.ties === 1 ? "" : "s"}
-                </p>
-              )}
 
               <div className="overflow-x-auto border-t border-line">
                 <table className="w-full min-w-[30rem] text-left text-sm">

@@ -4,6 +4,7 @@ import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { HeadToHeadPanel } from "../components/HeadToHeadPanel";
 import { TeamBadge } from "../components/TeamBadge";
+import { RankDelta } from "../components/RankDelta";
 
 export function History() {
   const { data, loading, error } = useLeagueHistory();
@@ -44,6 +45,32 @@ export function History() {
       };
     })
     .sort((a, b) => b.winPct - a.winPct || b.pointsFor - a.pointsFor);
+
+  // Where each manager finished the season before, so the table can show
+  // movement. Same ordering rule, so the comparison is like-for-like.
+  //
+  // Only meaningful once the season being viewed has actually been played:
+  // in an unplayed season everyone sits at 0-0 and the ordering is
+  // arbitrary, which produced confident-looking nonsense like "up 10".
+  const activeSeasonPlayed = activeSeason.weeks.length > 0;
+  const previousSeason = data.seasons.find(
+    (s) => Number(s.season) === Number(activeSeason.season) - 1,
+  );
+  const previousRanks = new Map<string, number>();
+  if (activeSeasonPlayed && previousSeason) {
+    previousSeason.rosters
+      .filter((r) => r.ownerUserId)
+      .map((r) => {
+        const games = r.wins + r.losses + r.ties;
+        return {
+          userId: r.ownerUserId as string,
+          winPct: games > 0 ? (r.wins + r.ties * 0.5) / games : 0,
+          pointsFor: r.pointsFor,
+        };
+      })
+      .sort((a, b) => b.winPct - a.winPct || b.pointsFor - a.pointsFor)
+      .forEach((row, i) => previousRanks.set(row.userId, i + 1));
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -97,7 +124,15 @@ export function History() {
                 row.manager.teamNameBySeason[activeSeason.season] ?? row.manager.teamName;
               return (
                 <tr key={row.rosterId}>
-                  <td className="px-3 py-3 text-muted sm:px-4">{i + 1}</td>
+                  <td className="whitespace-nowrap px-3 py-3 text-muted sm:px-4">
+                    <span className="mr-1.5">{i + 1}</span>
+                    {activeSeasonPlayed && previousRanks.size > 0 && (
+                      <RankDelta
+                        previous={previousRanks.get(row.manager.userId) ?? null}
+                        current={i + 1}
+                      />
+                    )}
+                  </td>
                   <td className="px-3 py-3 sm:px-4">
                     <div className="flex items-center gap-2">
                       <TeamBadge

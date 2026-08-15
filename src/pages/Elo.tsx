@@ -6,6 +6,8 @@ import { computeEloRatings, getEloLeaderboard, winProbability } from "../lib/elo
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
+import { FightCard } from "../components/FightCard";
+import { Sparkline } from "../components/Sparkline";
 import { useNflState } from "../lib/useNflState";
 
 export function Elo() {
@@ -40,6 +42,19 @@ export function Elo() {
     });
     return { chartData, series };
   }, [data, eloResult]);
+
+  // Recent rating history per manager, for the leaderboard sparklines.
+  const ratingTrends = useMemo(() => {
+    const out: Record<string, number[]> = {};
+    if (!eloResult) return out;
+    const recent = eloResult.history.slice(-30);
+    for (const snap of recent) {
+      for (const [userId, rating] of Object.entries(snap.ratings)) {
+        (out[userId] ??= []).push(Math.round(rating));
+      }
+    }
+    return out;
+  }, [eloResult]);
 
   const upcomingMatchups = useMemo(() => {
     if (!data || !eloResult || targetWeek === null) return [];
@@ -102,44 +117,24 @@ export function Elo() {
               Elo Win Probability — Week {targetWeek}
             </h2>
           </div>
-          <ul className="divide-y divide-line">
+          <div className="divide-y divide-line">
             {upcomingMatchups.map((m, i) => (
-              <li
+              <FightCard
                 key={i}
-                className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3 text-sm sm:px-5"
-              >
-                <Link
-                  to={`/manager/${m.managerA.userId}`}
-                  className="flex min-w-0 items-center gap-2 hover:underline"
-                >
-                  <TeamBadge
-                    userId={m.managerA.userId}
-                    displayName={m.managerA.displayName}
-                    size={26}
-                  />
-                  <span className="truncate font-medium text-primary">
-                    {m.managerA.displayName}
-                  </span>
-                </Link>
-                <span className="whitespace-nowrap text-xs font-semibold text-neon">
-                  {(m.probA * 100).toFixed(0)}% – {((1 - m.probA) * 100).toFixed(0)}%
-                </span>
-                <Link
-                  to={`/manager/${m.managerB.userId}`}
-                  className="flex min-w-0 items-center justify-end gap-2 hover:underline"
-                >
-                  <span className="truncate font-medium text-primary">
-                    {m.managerB.displayName}
-                  </span>
-                  <TeamBadge
-                    userId={m.managerB.userId}
-                    displayName={m.managerB.displayName}
-                    size={26}
-                  />
-                </Link>
-              </li>
+                centerLabel="Win probability"
+                left={{
+                  manager: m.managerA,
+                  headline: `${(m.probA * 100).toFixed(0)}%`,
+                  winner: m.probA >= 0.5,
+                }}
+                right={{
+                  manager: m.managerB,
+                  headline: `${((1 - m.probA) * 100).toFixed(0)}%`,
+                  winner: m.probA < 0.5,
+                }}
+              />
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
@@ -175,6 +170,13 @@ export function Elo() {
                   <span className="flex-1 truncate text-sm font-medium text-primary">
                     {entry.manager.displayName}
                   </span>
+                  <Sparkline
+                    values={ratingTrends[entry.manager.userId] ?? []}
+                    color={color}
+                    width={72}
+                    height={22}
+                    className="hidden shrink-0 sm:block"
+                  />
                   <span
                     className="shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
                     style={{

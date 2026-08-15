@@ -5,9 +5,14 @@ import { getChampionHistory } from "../lib/champions";
 import { generateHeadlines } from "../lib/headlines";
 import { PowerRankingsWidget } from "../components/PowerRankingsWidget";
 import { PastChampionsPanel } from "../components/PastChampionsPanel";
+import { ChampionBanners } from "../components/ChampionBanners";
+import { SackoPanel } from "../components/SackoPanel";
+import { Podium } from "../components/Podium";
 import { Countdown } from "../components/Countdown";
 import { HeadlinesTicker } from "../components/HeadlinesTicker";
-import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
+import { Reveal } from "../components/Reveal";
+import { SkeletonHome } from "../components/Skeleton";
+import { ErrorScreen } from "../components/StatusScreen";
 import { resolveDraftDate } from "../lib/constants";
 
 export function Home() {
@@ -17,7 +22,7 @@ export function Home() {
   const champions = useMemo(() => (data ? getChampionHistory(data) : []), [data]);
   const headlines = useMemo(() => (data ? generateHeadlines(data) : []), [data]);
 
-  if (loading) return <LoadingScreen />;
+  if (loading) return <SkeletonHome />;
   if (error || !data) return <ErrorScreen message={error ?? "Unknown error"} />;
 
   const latestSeason = data.seasons[data.seasons.length - 1];
@@ -28,9 +33,7 @@ export function Home() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary sm:text-3xl">
-            League Home
-          </h1>
+          <h1 className="text-2xl font-bold text-primary sm:text-3xl">League Home</h1>
           <p className="mt-1 text-sm text-muted">
             {data.seasons[0]?.season}–{latestSeason?.season} ·{" "}
             {Object.keys(data.managers).length} managers
@@ -45,19 +48,32 @@ export function Home() {
 
       {seasonNotStarted && (
         <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
-          The {latestSeason.season} season hasn&apos;t started yet — rankings below reflect
-          all completed seasons so far.
+          The {latestSeason.season} season hasn&apos;t started yet — rankings below reflect all
+          completed seasons so far.
         </div>
       )}
 
       <HeadlinesTicker headlines={headlines} />
 
+      <Reveal>
+        <Podium entries={powerRankings} />
+      </Reveal>
+
+      <Reveal delay={60}>
+        <ChampionBanners champions={champions} />
+      </Reveal>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <Reveal className="lg:col-span-2">
           <PowerRankingsWidget entries={powerRankings} />
-        </div>
-        <div className="lg:col-span-1">
-          <PastChampionsPanel champions={champions} />
+        </Reveal>
+        <div className="flex flex-col gap-6 lg:col-span-1">
+          <Reveal delay={60}>
+            <PastChampionsPanel champions={champions} />
+          </Reveal>
+          <Reveal delay={120}>
+            <SackoPanel history={data} />
+          </Reveal>
         </div>
       </div>
     </div>

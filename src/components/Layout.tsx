@@ -77,9 +77,12 @@ export function Layout() {
          * route afterwards. Suspense covers the lazy-loaded page chunks.
          */}
         <ErrorBoundary key={location.pathname}>
-          <Suspense fallback={<LoadingScreen label="Loading…" />}>
-            <Outlet />
-          </Suspense>
+          {/* page-enter is keyed too, so it replays the fade on each route change */}
+          <div key={location.pathname} className="page-enter flex flex-1 flex-col">
+            <Suspense fallback={<LoadingScreen label="Loading…" />}>
+              <Outlet />
+            </Suspense>
+          </div>
         </ErrorBoundary>
       </main>
       <footer className="mx-auto max-w-5xl px-4 py-6 text-center text-xs text-muted sm:px-6">
