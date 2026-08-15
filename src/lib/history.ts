@@ -5,6 +5,7 @@ import {
   getLeague,
   getLeagueRosters,
   getLeagueUsers,
+  getLosersBracket,
   getWinnersBracket,
 } from "../api/sleeper";
 import type { SleeperBracketMatch, SleeperMatchup } from "../api/types";
@@ -50,6 +51,12 @@ export interface SeasonData {
   bracket: SleeperBracketMatch[] | null;
   championRosterId: number | null;
   runnerUpRosterId: number | null;
+  /**
+   * Loser of the losers-bracket's last-place game - i.e. actual dead
+   * last, which the playoffs (or "toilet bowl") can reorder away from
+   * regular-season record. Null if the league didn't run one that season.
+   */
+  sackoRosterId: number | null;
 }
 
 export interface LeagueHistory {
@@ -83,10 +90,13 @@ async function loadSeason(leagueId: string): Promise<{
 
   const hasStarted = league.status !== "pre_draft" && league.status !== "drafting";
 
-  const [weekResults, bracket] = await Promise.all([
+  const [weekResults, bracket, losersBracket] = await Promise.all([
     hasStarted ? getAllMatchupsForSeason(leagueId) : Promise.resolve([]),
     league.status === "complete"
       ? getWinnersBracket(leagueId).catch(() => null)
+      : Promise.resolve(null),
+    league.status === "complete"
+      ? getLosersBracket(leagueId).catch(() => null)
       : Promise.resolve(null),
   ]);
 
@@ -122,6 +132,16 @@ async function loadSeason(leagueId: string): Promise<{
     }
   }
 
+  // The losers bracket's p:1 match is the last-place game - its loser
+  // (not its winner) is the one who actually finishes dead last.
+  let sackoRosterId: number | null = null;
+  if (losersBracket) {
+    const lastPlaceMatch = losersBracket.find((m) => m.p === 1);
+    if (lastPlaceMatch) {
+      sackoRosterId = lastPlaceMatch.l ?? null;
+    }
+  }
+
   return {
     season: {
       leagueId,
@@ -133,6 +153,7 @@ async function loadSeason(leagueId: string): Promise<{
       bracket,
       championRosterId,
       runnerUpRosterId,
+      sackoRosterId,
     },
     users,
     previousLeagueId: league.previous_league_id,

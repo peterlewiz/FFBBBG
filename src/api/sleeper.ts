@@ -43,6 +43,17 @@ export function getWinnersBracket(
   return getJson(`/league/${leagueId}/winners_bracket`);
 }
 
+/**
+ * The "toilet bowl" bracket that decides actual last place. Same shape as
+ * the winners bracket, but placements count up from the bottom - the p:1
+ * match is the last-place game, and its loser is the true sacko.
+ */
+export function getLosersBracket(
+  leagueId: string,
+): Promise<SleeperBracketMatch[]> {
+  return getJson(`/league/${leagueId}/losers_bracket`);
+}
+
 /** The current NFL week, per Sleeper's own clock - not league-specific. */
 export function getNflState(): Promise<SleeperNflState> {
   return getJson(`/state/nfl`);

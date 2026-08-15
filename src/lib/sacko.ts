@@ -10,9 +10,12 @@ export interface SackoEntry {
 }
 
 /**
- * Last place per completed season - the sacko. Sleeper exposes a losers
- * bracket, but we don't fetch it, so this uses final standings: worst
- * win rate, and lowest points scored as the tiebreak.
+ * Last place per completed season - the sacko. The playoffs (a "toilet
+ * bowl" losers bracket) decide this, same as the winners bracket decides
+ * the champion, so a bad-record team can dodge dead last by winning
+ * their bracket and a decent-record team can land there by losing it.
+ * Falls back to worst win rate (points as tiebreak) only for a season
+ * that didn't run a losers bracket.
  */
 export function getSackoHistory(history: LeagueHistory): SackoEntry[] {
   const entries: SackoEntry[] = [];
@@ -20,24 +23,29 @@ export function getSackoHistory(history: LeagueHistory): SackoEntry[] {
   for (const season of history.seasons) {
     if (season.status !== "complete" || season.rosters.length === 0) continue;
 
-    const ranked = season.rosters
-      .filter((r) => r.ownerUserId && history.managers[r.ownerUserId])
-      .map((r) => {
-        const games = r.wins + r.losses + r.ties;
-        return { roster: r, winPct: games > 0 ? (r.wins + r.ties * 0.5) / games : 0 };
-      })
-      .sort((a, b) => a.winPct - b.winPct || a.roster.pointsFor - b.roster.pointsFor);
+    let worstRoster = season.rosters.find((r) => r.rosterId === season.sackoRosterId) ?? null;
 
-    const worst = ranked[0];
-    const manager = worst && history.managers[worst.roster.ownerUserId as string];
-    if (!worst || !manager) continue;
+    if (!worstRoster) {
+      const ranked = season.rosters
+        .filter((r) => r.ownerUserId && history.managers[r.ownerUserId])
+        .map((r) => {
+          const games = r.wins + r.losses + r.ties;
+          return { roster: r, winPct: games > 0 ? (r.wins + r.ties * 0.5) / games : 0 };
+        })
+        .sort((a, b) => a.winPct - b.winPct || a.roster.pointsFor - b.roster.pointsFor);
+      worstRoster = ranked[0]?.roster ?? null;
+    }
+
+    const manager =
+      worstRoster?.ownerUserId ? history.managers[worstRoster.ownerUserId] : undefined;
+    if (!worstRoster || !manager) continue;
 
     entries.push({
       season: season.season,
       manager,
-      wins: worst.roster.wins,
-      losses: worst.roster.losses,
-      pointsFor: worst.roster.pointsFor,
+      wins: worstRoster.wins,
+      losses: worstRoster.losses,
+      pointsFor: worstRoster.pointsFor,
     });
   }
 
