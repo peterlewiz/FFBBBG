@@ -52,9 +52,11 @@ export interface SeasonData {
   championRosterId: number | null;
   runnerUpRosterId: number | null;
   /**
-   * Loser of the losers-bracket's last-place game - i.e. actual dead
-   * last, which the playoffs (or "toilet bowl") can reorder away from
-   * regular-season record. Null if the league didn't run one that season.
+   * Winner of the losers-bracket's last-place game (Sleeper crowns that
+   * bracket's "champion" the same way it crowns the real champion) -
+   * i.e. actual dead last, which the playoffs (or "toilet bowl") can
+   * reorder away from regular-season record. Null if the league didn't
+   * run one that season.
    */
   sackoRosterId: number | null;
 }
@@ -132,13 +134,17 @@ async function loadSeason(leagueId: string): Promise<{
     }
   }
 
-  // The losers bracket's p:1 match is the last-place game - its loser
-  // (not its winner) is the one who actually finishes dead last.
+  // Sleeper builds the losers bracket the same way it builds the winners
+  // bracket: the final match's winner is the "champion" of that bracket.
+  // For the winners bracket that's the actual champion (best). The
+  // losers bracket ranks the bottom of the league the same way, so its
+  // p:1 match's winner is the "champion of the bottom bracket" - i.e.
+  // the one who actually finishes dead last, not its loser.
   let sackoRosterId: number | null = null;
   if (losersBracket) {
     const lastPlaceMatch = losersBracket.find((m) => m.p === 1);
     if (lastPlaceMatch) {
-      sackoRosterId = lastPlaceMatch.l ?? null;
+      sackoRosterId = lastPlaceMatch.w ?? null;
     }
   }
 
