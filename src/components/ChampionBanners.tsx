@@ -40,9 +40,14 @@ export function ChampionBanners({ champions }: { champions: ChampionEntry[] }) {
                 {/* hanger */}
                 <span aria-hidden className="h-3 w-px" style={{ background: color }} />
 
-                {/* banner: rectangle with a notched bottom via clip-path */}
+                {/*
+                 * Banner: rectangle with a notched bottom via clip-path.
+                 * Fixed height so every banner matches - the optional
+                 * platform label would otherwise make pre-Sleeper seasons
+                 * taller than the rest.
+                 */}
                 <div
-                  className="relative flex w-full flex-col items-center gap-1 px-2 pb-6 pt-3 transition-shadow"
+                  className="relative flex h-28 w-full flex-col items-center gap-1 px-2 pb-6 pt-3 transition-shadow"
                   style={{
                     background: `linear-gradient(180deg, ${teamColorAlpha(userId ?? "", 0.35)}, ${teamColorAlpha(userId ?? "", 0.08)})`,
                     border: `1px solid ${color}`,
