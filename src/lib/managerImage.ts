@@ -58,6 +58,14 @@ export function useCustomManagerImage(userId: string): string | null {
       setUrl(resolved.get(userId) ?? null);
       return;
     }
+    // Headlines with no specific manager (e.g. "DRAFT DAY") pass "" here.
+    // There's nothing to probe for - skip straight to "no image" instead
+    // of firing four requests that all fall through to the SPA rewrite.
+    if (!userId) {
+      resolved.set(userId, null);
+      setUrl(null);
+      return;
+    }
 
     let cancelled = false;
     setUrl(null);
