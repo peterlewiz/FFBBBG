@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { ChampionEntry } from "../lib/champions";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
+import { TeamBadge } from "./TeamBadge";
 
 /**
  * Past champions as rafter banners. Oldest on the left, newest on the
@@ -47,7 +48,7 @@ export function ChampionBanners({ champions }: { champions: ChampionEntry[] }) {
                  * taller than the rest.
                  */}
                 <div
-                  className="relative flex h-28 w-full flex-col items-center gap-1 px-2 pb-6 pt-3 transition-shadow"
+                  className="relative flex h-36 w-full flex-col items-center gap-1 px-2 pb-7 pt-3 transition-shadow"
                   style={{
                     background: `linear-gradient(180deg, ${teamColorAlpha(userId ?? "", 0.35)}, ${teamColorAlpha(userId ?? "", 0.08)})`,
                     border: `1px solid ${color}`,
@@ -56,9 +57,23 @@ export function ChampionBanners({ champions }: { champions: ChampionEntry[] }) {
                     boxShadow: `0 0 22px ${glow}`,
                   }}
                 >
-                  <span className="text-base leading-none">🏆</span>
+                  {userId ? (
+                    <span className="relative">
+                      <TeamBadge
+                        userId={userId}
+                        displayName={c.champion?.displayName ?? "?"}
+                        size={40}
+                      />
+                      {/* trophy pip, so the banner still reads as a title */}
+                      <span className="absolute -bottom-1 -right-1 text-[11px] leading-none drop-shadow">
+                        🏆
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-xl leading-none">🏆</span>
+                  )}
                   <span
-                    className="text-[11px] font-black tabular-nums leading-none"
+                    className="mt-0.5 text-[11px] font-black tabular-nums leading-none"
                     style={{ color }}
                   >
                     {c.season}
