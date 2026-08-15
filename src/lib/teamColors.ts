@@ -13,12 +13,14 @@ const ASSIGNED: Record<string, string> = {
   "976317587141287936": "#FF7A1A", // sharo733     - orange
   "732791680197054464": "#9D4EFF", // mmasoud2     - violet
   "978857538626084864": "#00FF9C", // Enasif18     - spring green
-  "738510505450283008": "#FF1E6F", // plewiz       - hot pink
+  "738510505450283008": "#39FF14", // plewiz       - neon green
   "739598324197392384": "#2E8BFF", // KokoM        - electric blue
   "853720333243482112": "#FFE81A", // mavs97       - yellow
   "872210229440487424": "#00FFD1", // SumoFlakes   - turquoise
   "739228047332548608": "#FF3B3B", // frtheo       - red
   "738538726719930368": "#6C5CFF", // 3mojt        - indigo
+  "739597616110829568": "#E100FF", // Hany1        - electric purple (departed)
+  "718138810201878528": "#FF6EC7", // Shady43      - bubblegum pink (departed)
 };
 
 /** Fallback pool for anyone not in ASSIGNED (e.g. managers who've left). */
@@ -29,7 +31,7 @@ const FALLBACK = [
   "#FF7A1A",
   "#9D4EFF",
   "#00FF9C",
-  "#FF1E6F",
+  "#39FF14",
   "#2E8BFF",
   "#FFE81A",
   "#00FFD1",
