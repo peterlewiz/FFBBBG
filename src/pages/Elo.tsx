@@ -1,9 +1,11 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { computeEloRatings, getEloLeaderboard, winProbability } from "../lib/elo";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
-import { teamColor } from "../lib/teamColors";
+import { teamColor, teamColorAlpha } from "../lib/teamColors";
+import { TeamBadge } from "../components/TeamBadge";
 import { useNflState } from "../lib/useNflState";
 
 export function Elo() {
@@ -86,7 +88,9 @@ export function Elo() {
         <p className="mt-1 text-sm text-muted">
           A simple Elo rating built from every historical matchup — higher rating means a
           manager has consistently beaten good teams by good margins. See the{" "}
-          <span className="font-medium text-body">Predictions</span>{" "}
+          <Link to="/predictions" className="font-medium text-neon hover:underline">
+            Predictions
+          </Link>{" "}
           tab to make your own picks for the week.
         </p>
       </div>
@@ -104,15 +108,35 @@ export function Elo() {
                 key={i}
                 className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3 text-sm sm:px-5"
               >
-                <span className="truncate font-medium text-primary">
-                  {m.managerA.displayName}
-                </span>
+                <Link
+                  to={`/manager/${m.managerA.userId}`}
+                  className="flex min-w-0 items-center gap-2 hover:underline"
+                >
+                  <TeamBadge
+                    userId={m.managerA.userId}
+                    displayName={m.managerA.displayName}
+                    size={26}
+                  />
+                  <span className="truncate font-medium text-primary">
+                    {m.managerA.displayName}
+                  </span>
+                </Link>
                 <span className="whitespace-nowrap text-xs font-semibold text-neon">
                   {(m.probA * 100).toFixed(0)}% – {((1 - m.probA) * 100).toFixed(0)}%
                 </span>
-                <span className="truncate text-right font-medium text-primary">
-                  {m.managerB.displayName}
-                </span>
+                <Link
+                  to={`/manager/${m.managerB.userId}`}
+                  className="flex min-w-0 items-center justify-end gap-2 hover:underline"
+                >
+                  <span className="truncate font-medium text-primary">
+                    {m.managerB.displayName}
+                  </span>
+                  <TeamBadge
+                    userId={m.managerB.userId}
+                    displayName={m.managerB.displayName}
+                    size={26}
+                  />
+                </Link>
               </li>
             ))}
           </ul>
@@ -124,19 +148,47 @@ export function Elo() {
           <h2 className="text-lg font-semibold text-primary">Elo Leaderboard</h2>
         </div>
         <ol className="divide-y divide-line">
-          {leaderboard.map((entry, i) => (
-            <li key={entry.manager.userId} className="flex items-center gap-4 px-5 py-3">
-              <span className="w-6 text-center text-sm font-semibold text-muted">
-                {i + 1}
-              </span>
-              <span className="flex-1 truncate text-sm font-medium text-primary">
-                {entry.manager.displayName}
-              </span>
-              <span className="text-sm font-semibold text-body">
-                {entry.rating}
-              </span>
-            </li>
-          ))}
+          {leaderboard.map((entry, i) => {
+            const color = teamColor(entry.manager.userId);
+            return (
+              <li key={entry.manager.userId}>
+                <Link
+                  to={`/manager/${entry.manager.userId}`}
+                  className="relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2 sm:gap-4 sm:px-5"
+                >
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 left-0 w-[3px]"
+                    style={{
+                      background: color,
+                      boxShadow: `0 0 10px ${teamColorAlpha(entry.manager.userId, 0.7)}`,
+                    }}
+                  />
+                  <span className="w-5 shrink-0 text-center text-sm font-semibold text-muted">
+                    {i + 1}
+                  </span>
+                  <TeamBadge
+                    userId={entry.manager.userId}
+                    displayName={entry.manager.displayName}
+                    size={32}
+                  />
+                  <span className="flex-1 truncate text-sm font-medium text-primary">
+                    {entry.manager.displayName}
+                  </span>
+                  <span
+                    className="shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
+                    style={{
+                      color,
+                      background: teamColorAlpha(entry.manager.userId, 0.12),
+                      border: `1px solid ${teamColorAlpha(entry.manager.userId, 0.35)}`,
+                    }}
+                  >
+                    {entry.rating}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ol>
       </div>
 
