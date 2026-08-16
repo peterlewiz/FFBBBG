@@ -4,12 +4,11 @@ import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "./TeamBadge";
 
 /**
- * Past champions as rafter banners. Oldest on the left, newest on the
+ * Past champions as rafter banners. Newest on the left, oldest on the
  * right, each hanging from a rail in that manager's neon color.
  */
 export function ChampionBanners({ champions }: { champions: ChampionEntry[] }) {
   if (champions.length === 0) return null;
-  const oldestFirst = [...champions].reverse();
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-line bg-surface">
@@ -27,7 +26,7 @@ export function ChampionBanners({ champions }: { champions: ChampionEntry[] }) {
         />
 
         <div className="flex items-start gap-2 overflow-x-auto pb-1 pt-0 [scrollbar-width:none] sm:gap-3 [&::-webkit-scrollbar]:hidden">
-          {oldestFirst.map((c) => {
+          {champions.map((c) => {
             const userId = c.champion?.userId;
             const color = userId ? teamColor(userId) : "#00e5ff";
             const glow = userId ? teamColorAlpha(userId, 0.35) : "rgba(0,229,255,0.35)";
