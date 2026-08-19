@@ -178,6 +178,12 @@ export function History() {
   const previousSeason = data.seasons.find(
     (s) => Number(s.season) === Number(season.season) - 1,
   );
+  // No Sleeper season before this one (e.g. 2021, right after the league
+  // moved off ESPN) - fall back to a legacy season's own standings, which
+  // already carry a rank rather than win%/points to re-derive one from.
+  const previousLegacySeason = previousSeason
+    ? undefined
+    : LEGACY_SEASONS.find((l) => Number(l.season) === Number(season.season) - 1 && l.standings);
   const previousRanks = new Map<string, number>();
   if (activeSeasonPlayed && previousSeason) {
     previousSeason.rosters
@@ -192,6 +198,10 @@ export function History() {
       })
       .sort((a, b) => b.winPct - a.winPct || b.pointsFor - a.pointsFor)
       .forEach((row, i) => previousRanks.set(row.userId, i + 1));
+  } else if (activeSeasonPlayed && previousLegacySeason) {
+    for (const row of previousLegacySeason.standings ?? []) {
+      if (row.userId) previousRanks.set(row.userId, row.rank);
+    }
   }
 
   return (
