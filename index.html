@@ -14,6 +14,22 @@
     />
     <link rel="canonical" href="https://bbbgleague.com/" />
 
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-RRSNDWK6P4"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+      // This is a single-page app - route changes don't reload the page, so
+      // the automatic page_view on load would be the only one GA ever sees.
+      // Disabled here; src/lib/ga.ts sends one on every route change instead
+      // (including the first), which is what makes "top pages" and
+      // per-page engagement time actually reflect tab usage.
+      gtag("config", "G-RRSNDWK6P4", { send_page_view: false });
+    </script>
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Bears Beats Battlestar Galactica" />
     <meta property="og:title" content="Bears Beats Battlestar Galactica" />

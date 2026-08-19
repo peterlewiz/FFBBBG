@@ -1,6 +1,7 @@
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
+import { trackPageView } from "../lib/ga";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { LoadingScreen } from "./StatusScreen";
 
@@ -11,6 +12,16 @@ const navItems = [
   { to: "/graphs", label: "Graphs" },
   { to: "/elo", label: "Elo" },
 ];
+
+/** Readable page name for GA, from the same labels the nav bar uses. */
+function pageTitleFor(pathname: string): string {
+  const match = navItems.find((item) =>
+    item.end ? pathname === item.to : pathname.startsWith(item.to),
+  );
+  if (match) return match.label;
+  if (pathname.startsWith("/manager/")) return "Manager Detail";
+  return pathname;
+}
 
 const FALLBACK_NAME = "Bears Beats Battlestar Galactica";
 
@@ -35,6 +46,13 @@ export function Layout() {
   // Cached by useLeagueHistory, so this doesn't cost an extra fetch.
   const { data } = useLeagueHistory();
   const location = useLocation();
+
+  // GA's automatic page_view is disabled (see index.html) since this is an
+  // SPA - fire one ourselves on every route change, including the first,
+  // so "top pages" and per-page engagement time reflect actual tab usage.
+  useEffect(() => {
+    trackPageView(location.pathname, pageTitleFor(location.pathname));
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-ink">
