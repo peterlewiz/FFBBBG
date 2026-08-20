@@ -13,9 +13,12 @@ function rankMedal(rank: number): string | null {
 export function PowerRankingsWidget({
   entries,
   limit,
+  draftOrder,
 }: {
   entries: AllTimePowerRankEntry[];
   limit?: number;
+  /** userId -> this season's draft slot (1 = first overall), if set. */
+  draftOrder?: Record<string, number> | null;
 }) {
   const shown = limit ? entries.slice(0, limit) : entries;
 
@@ -58,6 +61,11 @@ export function PowerRankingsWidget({
                     {entry.playoffAppearances}/{entry.seasonsPlayed} playoffs
                   </p>
                 </div>
+                {draftOrder?.[entry.manager.userId] !== undefined && (
+                  <span className="hidden shrink-0 rounded-full border border-line px-2 py-1 text-[11px] font-medium text-muted sm:inline-block">
+                    Pick {draftOrder[entry.manager.userId]}
+                  </span>
+                )}
                 <span
                   className="shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
                   style={{

@@ -24,6 +24,9 @@ export interface SleeperDraft {
   status: string; // "pre_draft" | "drafting" | "complete"
   /** Scheduled start, epoch milliseconds. Null until the commissioner sets it. */
   start_time: number | null;
+  /** user_id -> pick slot (1 = first overall). Set once the commissioner
+   * randomizes/sets the order, even before the draft itself happens. */
+  draft_order?: Record<string, number> | null;
 }
 
 export interface SleeperUser {

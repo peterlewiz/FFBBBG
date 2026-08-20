@@ -65,7 +65,7 @@ export function Home() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Reveal className="lg:col-span-2">
-          <PowerRankingsWidget entries={powerRankings} />
+          <PowerRankingsWidget entries={powerRankings} draftOrder={data.draftOrder} />
         </Reveal>
         <div className="flex flex-col gap-6 lg:col-span-1">
           <Reveal delay={60}>

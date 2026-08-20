@@ -74,6 +74,12 @@ export interface LeagueHistory {
    * the commissioner in Sleeper. Null if no date is set yet.
    */
   draftStartTime: number | null;
+  /**
+   * Current season's draft slot per manager (userId -> pick number, 1 =
+   * first overall), set by the commissioner ahead of the draft itself.
+   * Null until it's been set.
+   */
+  draftOrder: Record<string, number> | null;
 }
 
 function combineFptsFields(whole: number, decimal?: number): number {
@@ -220,12 +226,15 @@ export async function loadLeagueHistory(
 
   seasons.sort((a, b) => Number(a.season) - Number(b.season));
 
-  // The commissioner's scheduled draft time, straight from Sleeper rather
-  // than hardcoded. Non-fatal if it fails - the countdown just falls back.
+  // The commissioner's scheduled draft time and pick order, straight from
+  // Sleeper rather than hardcoded. Non-fatal if it fails - the countdown
+  // just falls back, and the pick order simply won't show.
   let draftStartTime: number | null = null;
+  let draftOrder: Record<string, number> | null = null;
   if (currentLeague?.draft_id) {
     const draft = await getDraft(currentLeague.draft_id).catch(() => null);
     draftStartTime = draft?.start_time ?? null;
+    draftOrder = draft?.draft_order ?? null;
   }
 
   const history: LeagueHistory = {
@@ -234,6 +243,7 @@ export async function loadLeagueHistory(
     leagueName: currentLeague?.name ?? "",
     leagueAvatar: currentLeague?.avatar ?? null,
     draftStartTime,
+    draftOrder,
   };
   cacheSet(cacheKey, history);
   return history;
