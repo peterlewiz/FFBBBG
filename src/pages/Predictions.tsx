@@ -6,9 +6,48 @@ import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { useNflState } from "../lib/useNflState";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
 import { computeLeaderboard, upsertPrediction, type PredictionRow } from "../lib/predictions";
-import { ROOT_LEAGUE_ID } from "../lib/history";
+import { ROOT_LEAGUE_ID, type LeagueHistory } from "../lib/history";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
+import { FightCard } from "../components/FightCard";
+
+/**
+ * Round-1 playoff games from the most recent complete season, so the page
+ * has something to show (framed as a placeholder, not real picks) instead
+ * of a dead end while the next season's schedule doesn't exist yet.
+ */
+function findPlayoffPreview(history: LeagueHistory) {
+  for (let i = history.seasons.length - 1; i >= 0; i--) {
+    const season = history.seasons[i];
+    if (season.status !== "complete" || !season.bracket || season.bracket.length === 0) continue;
+
+    const rosterToUser = new Map(
+      season.rosters.filter((r) => r.ownerUserId).map((r) => [r.rosterId, r.ownerUserId as string]),
+    );
+    const games = season.bracket
+      .filter((m) => m.r === 1 && m.t1 !== null && m.t2 !== null && m.w !== null)
+      .map((m) => {
+        const userA = rosterToUser.get(m.t1 as number);
+        const userB = rosterToUser.get(m.t2 as number);
+        if (!userA || !userB || !history.managers[userA] || !history.managers[userB]) return null;
+        return {
+          managerA: history.managers[userA],
+          managerB: history.managers[userB],
+          aWon: m.w === m.t1,
+        };
+      })
+      .filter((g): g is NonNullable<typeof g> => g !== null);
+
+    const champion = season.championRosterId
+      ? rosterToUser.get(season.championRosterId)
+      : undefined;
+
+    if (games.length > 0) {
+      return { season: season.season, games, champion: champion ? history.managers[champion] : null };
+    }
+  }
+  return null;
+}
 
 const PICKER_STORAGE_KEY = "sleeper-site:picker-user-id";
 
@@ -65,6 +104,11 @@ export function Predictions() {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
   }, [data, currentSeason, targetWeek]);
+
+  const playoffPreview = useMemo(
+    () => (data && matchups.length === 0 ? findPlayoffPreview(data) : null),
+    [data, matchups.length],
+  );
 
   const leaderboard = useMemo(
     () => (data ? computeLeaderboard(data, predictionsState.data) : []),
@@ -173,6 +217,35 @@ export function Predictions() {
         </div>
         {nflStateError ? (
           <p className="px-5 py-4 text-sm text-red-400">{nflStateError}</p>
+        ) : matchups.length === 0 && playoffPreview ? (
+          <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
+            <p className="text-sm text-muted">
+              No matchups yet - here&apos;s the first round of {playoffPreview.season}&apos;s
+              playoffs as a preview of what picks will look like once the season&apos;s underway.
+            </p>
+            <div className="flex flex-col gap-3">
+              {playoffPreview.games.map((g, i) => (
+                <FightCard
+                  key={i}
+                  centerLabel={`${playoffPreview.season} Playoffs · Round 1`}
+                  left={{ manager: g.managerA, winner: g.aWon }}
+                  right={{ manager: g.managerB, winner: !g.aWon }}
+                />
+              ))}
+            </div>
+            {playoffPreview.champion && (
+              <p className="text-center text-sm text-muted">
+                🏆{" "}
+                <Link
+                  to={`/manager/${playoffPreview.champion.userId}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {playoffPreview.champion.displayName}
+                </Link>{" "}
+                went on to win the {playoffPreview.season} title.
+              </p>
+            )}
+          </div>
         ) : matchups.length === 0 ? (
           <p className="px-5 py-4 text-sm text-muted">
             No matchups available for this week yet.
