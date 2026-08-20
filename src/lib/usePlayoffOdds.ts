@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useLeagueHistory } from "./useLeagueHistory";
 import { useNflState } from "./useNflState";
 import { computeEloRatings } from "./elo";
-import { simulatePlayoffOdds, type PlayoffOddsResult } from "./playoffOdds";
+import {
+  simulatePlayoffOdds,
+  simulatePreseasonProjection,
+  type PlayoffOddsResult,
+  type PreseasonProjectionResult,
+} from "./playoffOdds";
 import { fetchPreviousSnapshot, saveSnapshot } from "./playoffOddsSnapshots";
 import { ROOT_LEAGUE_ID } from "./history";
 
@@ -13,6 +18,12 @@ export interface PlayoffOddsDelta {
 
 export interface PlayoffOddsState {
   data: PlayoffOddsResult | null;
+  /**
+   * Set only when `data` is null because there's no real schedule yet
+   * (before the draft) - a career-Elo-only projection so the page still
+   * has something to show. Never both set at once.
+   */
+  preseasonData: PreseasonProjectionResult | null;
   /** The week the comparison snapshot is from, null if there isn't one yet. */
   previousWeek: number | null;
   deltas: Record<string, PlayoffOddsDelta>;
@@ -35,6 +46,12 @@ export function usePlayoffOdds(): PlayoffOddsState {
     const eloResult = computeEloRatings(history);
     return simulatePlayoffOdds(history, eloResult);
   }, [history]);
+
+  const preseasonResult = useMemo(() => {
+    if (!history || result) return null;
+    const eloResult = computeEloRatings(history);
+    return simulatePreseasonProjection(history, eloResult);
+  }, [history, result]);
 
   const [previousWeek, setPreviousWeek] = useState<number | null>(null);
   const [deltas, setDeltas] = useState<Record<string, PlayoffOddsDelta>>({});
@@ -85,6 +102,7 @@ export function usePlayoffOdds(): PlayoffOddsState {
 
   return {
     data: result,
+    preseasonData: preseasonResult,
     previousWeek,
     deltas,
     loading: historyLoading,

@@ -181,60 +181,31 @@ function computeAsOfWeek(season: SeasonData): number {
   return max;
 }
 
+interface SimTeam {
+  userId: string;
+  rosterId: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  rating: number;
+  mean: number;
+  stdev: number;
+}
+
 /**
- * Monte Carlo playoff odds for the current season: plays out the rest of
- * the regular season `simulations` times (win/loss from each matchup's
- * Elo win probability; simulated box scores, drawn from each manager's
- * own scoring distribution, only used to break playoff-seeding ties the
- * same way real standings do), seeds the resulting top-N field, and runs
- * the actual playoff bracket structure to a champion each time.
- *
- * Returns null if the current season doesn't have enough set up to
- * simulate yet (no draft/rosters, or playoff format not configured).
+ * The Monte Carlo core, shared by the real in-season simulation and the
+ * preseason projection below - everything about *how* a season plays out
+ * (Elo-driven win/loss, simulated box scores for seeding ties, bracket
+ * structure) lives here. What differs between the two callers is only
+ * *which* games get simulated and what each team's starting record is.
  */
-export function simulatePlayoffOdds(
-  history: LeagueHistory,
-  eloResult: EloResult,
-  simulations: number = DEFAULT_SIMULATIONS,
-): PlayoffOddsResult | null {
-  const season = history.seasons[history.seasons.length - 1];
-  if (
-    !season ||
-    season.rosters.length === 0 ||
-    // Rosters exist as soon as managers join for the season, well before
-    // the schedule does - without a schedule there's nothing to simulate
-    // and no real signal to seed a field from (every team would tie at
-    // 0-0-0, resolved only by array order, which looks like real odds
-    // but is meaningless noise).
-    season.weeks.length === 0 ||
-    !season.playoffWeekStart ||
-    !season.playoffTeams
-  ) {
-    return null;
-  }
-  const playoffTeamCount = season.playoffTeams;
-
-  const teams = season.rosters
-    .filter((r) => r.ownerUserId && history.managers[r.ownerUserId])
-    .map((r) => {
-      const userId = r.ownerUserId as string;
-      const stats = teamScoringStats(history, season, userId);
-      return {
-        userId,
-        rosterId: r.rosterId,
-        wins: r.wins,
-        losses: r.losses,
-        ties: r.ties,
-        pointsFor: r.pointsFor,
-        rating: eloResult.ratings[userId] ?? 1500,
-        mean: stats.mean,
-        stdev: stats.stdev,
-      };
-    });
-
-  if (teams.length < playoffTeamCount) return null;
-
-  const remaining = remainingRegularSeasonMatchups(season);
+function runMonteCarlo(
+  teams: SimTeam[],
+  matchups: { rosterA: number; rosterB: number }[],
+  playoffTeamCount: number,
+  simulations: number,
+): PlayoffOddsEntry[] {
   const rosterIndex = new Map(teams.map((t, i) => [t.rosterId, i]));
 
   const playoffCount = new Array(teams.length).fill(0);
@@ -247,7 +218,7 @@ export function simulatePlayoffOdds(
     const ties = teams.map((t) => t.ties);
     const pointsFor = teams.map((t) => t.pointsFor);
 
-    for (const m of remaining) {
+    for (const m of matchups) {
       const iA = rosterIndex.get(m.rosterA);
       const iB = rosterIndex.get(m.rosterB);
       if (iA === undefined || iB === undefined) continue;
@@ -298,6 +269,66 @@ export function simulatePlayoffOdds(
     seedPct: seedCount[i].map((c) => c / simulations),
   }));
   entries.sort((a, b) => b.playoffPct - a.playoffPct || b.titlePct - a.titlePct);
+  return entries;
+}
+
+/**
+ * Monte Carlo playoff odds for the current season: plays out the rest of
+ * the regular season `simulations` times (win/loss from each matchup's
+ * Elo win probability; simulated box scores, drawn from each manager's
+ * own scoring distribution, only used to break playoff-seeding ties the
+ * same way real standings do), seeds the resulting top-N field, and runs
+ * the actual playoff bracket structure to a champion each time.
+ *
+ * Returns null if the current season doesn't have enough set up to
+ * simulate yet (no draft/rosters, or playoff format not configured) -
+ * see `simulatePreseasonProjection` for a fallback that doesn't need a
+ * real schedule.
+ */
+export function simulatePlayoffOdds(
+  history: LeagueHistory,
+  eloResult: EloResult,
+  simulations: number = DEFAULT_SIMULATIONS,
+): PlayoffOddsResult | null {
+  const season = history.seasons[history.seasons.length - 1];
+  if (
+    !season ||
+    season.rosters.length === 0 ||
+    // Rosters exist as soon as managers join for the season, well before
+    // the schedule does - without a schedule there's nothing to simulate
+    // and no real signal to seed a field from (every team would tie at
+    // 0-0-0, resolved only by array order, which looks like real odds
+    // but is meaningless noise).
+    season.weeks.length === 0 ||
+    !season.playoffWeekStart ||
+    !season.playoffTeams
+  ) {
+    return null;
+  }
+  const playoffTeamCount = season.playoffTeams;
+
+  const teams: SimTeam[] = season.rosters
+    .filter((r) => r.ownerUserId && history.managers[r.ownerUserId])
+    .map((r) => {
+      const userId = r.ownerUserId as string;
+      const stats = teamScoringStats(history, season, userId);
+      return {
+        userId,
+        rosterId: r.rosterId,
+        wins: r.wins,
+        losses: r.losses,
+        ties: r.ties,
+        pointsFor: r.pointsFor,
+        rating: eloResult.ratings[userId] ?? 1500,
+        mean: stats.mean,
+        stdev: stats.stdev,
+      };
+    });
+
+  if (teams.length < playoffTeamCount) return null;
+
+  const remaining = remainingRegularSeasonMatchups(season);
+  const entries = runMonteCarlo(teams, remaining, playoffTeamCount, simulations);
 
   return {
     season: season.season,
@@ -306,4 +337,70 @@ export function simulatePlayoffOdds(
     simulations,
     entries,
   };
+}
+
+export interface PreseasonProjectionResult {
+  season: string;
+  playoffTeams: number;
+  simulations: number;
+  entries: PlayoffOddsEntry[];
+}
+
+/** Every team plays every other team once - a stand-in for a real
+ * schedule that doesn't exist yet. */
+function roundRobinPairs(rosterIds: number[]): { rosterA: number; rosterB: number }[] {
+  const out: { rosterA: number; rosterB: number }[] = [];
+  for (let i = 0; i < rosterIds.length; i++) {
+    for (let j = i + 1; j < rosterIds.length; j++) {
+      out.push({ rosterA: rosterIds[i], rosterB: rosterIds[j] });
+    }
+  }
+  return out;
+}
+
+/**
+ * A preseason projection for when there's no real schedule to simulate
+ * yet (before the draft): this year's field of managers, ranked purely
+ * on career Elo (built from every previous season) and each manager's
+ * career scoring distribution, playing a hypothetical round-robin.
+ * There's no real strength-of-schedule signal to use since the actual
+ * schedule doesn't exist, so this is a rating-only projection, not a
+ * substitute for `simulatePlayoffOdds` once the season actually starts.
+ */
+export function simulatePreseasonProjection(
+  history: LeagueHistory,
+  eloResult: EloResult,
+  simulations: number = DEFAULT_SIMULATIONS,
+): PreseasonProjectionResult | null {
+  const season = history.seasons[history.seasons.length - 1];
+  if (!season || season.rosters.length === 0 || !season.playoffTeams) return null;
+  const playoffTeamCount = season.playoffTeams;
+
+  const teams: SimTeam[] = season.rosters
+    .filter((r) => r.ownerUserId && history.managers[r.ownerUserId])
+    .map((r) => {
+      const userId = r.ownerUserId as string;
+      // No season-to-date games exist yet, so this always falls back to
+      // the manager's career distribution (or the generic default for
+      // someone brand new to the league).
+      const stats = teamScoringStats(history, season, userId);
+      return {
+        userId,
+        rosterId: r.rosterId,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        pointsFor: 0,
+        rating: eloResult.ratings[userId] ?? 1500,
+        mean: stats.mean,
+        stdev: stats.stdev,
+      };
+    });
+
+  if (teams.length < playoffTeamCount) return null;
+
+  const matchups = roundRobinPairs(teams.map((t) => t.rosterId));
+  const entries = runMonteCarlo(teams, matchups, playoffTeamCount, simulations);
+
+  return { season: season.season, playoffTeams: playoffTeamCount, simulations, entries };
 }

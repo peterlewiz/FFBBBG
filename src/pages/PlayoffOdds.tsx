@@ -5,6 +5,7 @@ import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { TeamBadge } from "../components/TeamBadge";
 import { teamColor } from "../lib/teamColors";
+import type { LeagueHistory } from "../lib/history";
 import type { PlayoffOddsEntry } from "../lib/playoffOdds";
 
 function pct(n: number): string {
@@ -48,9 +49,82 @@ function DeltaBadge({ value }: { value: number | null }) {
   );
 }
 
+/** The odds table, shared by the real in-season view and the preseason
+ * projection - `delta` is omitted entirely for the latter, since there's
+ * no "last week" to compare a hypothetical projection against. */
+function OddsTable({
+  history,
+  entries,
+  delta,
+}: {
+  history: LeagueHistory;
+  entries: PlayoffOddsEntry[];
+  delta?: { previousWeek: number | null; values: Record<string, number | null> };
+}) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
+      <table className="w-full min-w-[32rem] text-left text-sm">
+        <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
+          <tr>
+            <th className="px-3 py-3 font-medium sm:px-4">#</th>
+            <th className="px-3 py-3 font-medium sm:px-4">Manager</th>
+            <th className="px-3 py-3 font-medium sm:px-4">Playoff odds</th>
+            <th className="px-3 py-3 font-medium sm:px-4">Seed</th>
+            <th className="px-3 py-3 font-medium sm:px-4">Title odds</th>
+            {delta && (
+              <th className="px-3 py-3 font-medium sm:px-4">
+                Δ{delta.previousWeek !== null ? ` wk ${delta.previousWeek}` : ""}
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {entries.map((entry, i) => {
+            const manager = history.managers[entry.userId];
+            if (!manager) return null;
+            const color = teamColor(entry.userId);
+            return (
+              <tr key={entry.userId}>
+                <td className="whitespace-nowrap px-3 py-3 text-muted sm:px-4">{i + 1}</td>
+                <td className="px-3 py-3 sm:px-4">
+                  <div className="flex items-center gap-2">
+                    <TeamBadge userId={manager.userId} displayName={manager.displayName} size={22} />
+                    <Link
+                      to={`/manager/${manager.userId}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {manager.displayName}
+                    </Link>
+                  </div>
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 sm:px-4">
+                  <span className="font-bold tabular-nums" style={{ color }}>
+                    {pct(entry.playoffPct)}
+                  </span>
+                </td>
+                <td className="px-3 py-3 sm:px-4">
+                  <SeedBar entry={entry} color={color} />
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
+                  {pct(entry.titlePct)}
+                </td>
+                {delta && (
+                  <td className="whitespace-nowrap px-3 py-3 sm:px-4">
+                    <DeltaBadge value={delta.values[entry.userId] ?? null} />
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function PlayoffOdds() {
   const { data: history } = useLeagueHistory();
-  const { data, previousWeek, deltas, loading, error } = usePlayoffOdds();
+  const { data, preseasonData, previousWeek, deltas, loading, error } = usePlayoffOdds();
 
   // The single biggest week-over-week mover, for the headline callout -
   // this is the "you dropped 14% after Sunday" moment.
@@ -69,9 +143,7 @@ export function PlayoffOdds() {
   if (error || !history) return <ErrorScreen message={error ?? "Unknown error"} />;
 
   const latestSeason = history.seasons[history.seasons.length - 1];
-  const seasonNotStarted =
-    !data ||
-    (latestSeason && (latestSeason.status === "pre_draft" || latestSeason.status === "drafting"));
+  const noScheduleYet = !data && !preseasonData;
 
   return (
     <div className="flex flex-col gap-6">
@@ -80,15 +152,26 @@ export function PlayoffOdds() {
         <p className="mt-1 text-sm text-muted">
           {data
             ? `${data.simulations.toLocaleString()} simulated seasons, run off live Elo ratings - through week ${data.asOfWeek || "0 (preseason)"}.`
-            : "Monte Carlo playoff odds, run off live Elo ratings."}
+            : preseasonData
+              ? `${preseasonData.simulations.toLocaleString()} simulated seasons, run off career Elo ratings.`
+              : "Monte Carlo playoff odds, run off live Elo ratings."}
         </p>
       </div>
 
-      {seasonNotStarted && (
+      {noScheduleYet && (
         <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
-          {latestSeason?.weeks.length
-            ? "No games played yet this season - odds will show once week 1 is underway."
+          {latestSeason?.rosters.length
+            ? "Not enough managers signed up yet to project a playoff field."
             : "The season hasn't started yet - odds will show once the draft happens and the schedule is set."}
+        </div>
+      )}
+
+      {preseasonData && (
+        <div className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">
+          There&apos;s no schedule yet, so this is a <span className="text-primary">preseason
+          projection</span>: this year&apos;s managers ranked purely by career Elo (built from
+          every previous season) playing a hypothetical round-robin. It&apos;ll switch to real,
+          schedule-based odds automatically once the season starts.
         </div>
       )}
 
@@ -115,67 +198,34 @@ export function PlayoffOdds() {
       )}
 
       {data && (
-        <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
-          <table className="w-full min-w-[36rem] text-left text-sm">
-            <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-3 py-3 font-medium sm:px-4">#</th>
-                <th className="px-3 py-3 font-medium sm:px-4">Manager</th>
-                <th className="px-3 py-3 font-medium sm:px-4">Playoff odds</th>
-                <th className="px-3 py-3 font-medium sm:px-4">Seed</th>
-                <th className="px-3 py-3 font-medium sm:px-4">Title odds</th>
-                <th className="px-3 py-3 font-medium sm:px-4">
-                  Δ{previousWeek !== null ? ` wk ${previousWeek}` : ""}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {data.entries.map((entry, i) => {
-                const manager = history.managers[entry.userId];
-                if (!manager) return null;
-                const color = teamColor(entry.userId);
-                return (
-                  <tr key={entry.userId}>
-                    <td className="whitespace-nowrap px-3 py-3 text-muted sm:px-4">{i + 1}</td>
-                    <td className="px-3 py-3 sm:px-4">
-                      <div className="flex items-center gap-2">
-                        <TeamBadge userId={manager.userId} displayName={manager.displayName} size={22} />
-                        <Link
-                          to={`/manager/${manager.userId}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {manager.displayName}
-                        </Link>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 sm:px-4">
-                      <span className="font-bold tabular-nums" style={{ color }}>
-                        {pct(entry.playoffPct)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 sm:px-4">
-                      <SeedBar entry={entry} color={color} />
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-body sm:px-4">
-                      {pct(entry.titlePct)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 sm:px-4">
-                      <DeltaBadge value={deltas[entry.userId]?.playoffDelta ?? null} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <OddsTable
+          history={history}
+          entries={data.entries}
+          delta={{
+            previousWeek,
+            values: Object.fromEntries(
+              Object.entries(deltas).map(([userId, d]) => [userId, d.playoffDelta]),
+            ),
+          }}
+        />
       )}
 
+      {!data && preseasonData && <OddsTable history={history} entries={preseasonData.entries} />}
+
       <p className="text-xs text-muted">
-        Each simulated season replays the rest of the regular season using every remaining
-        matchup's Elo win probability, seeds the top {data?.playoffTeams ?? "N"} by simulated
-        record (points as tiebreak, same as real standings), then plays out the actual playoff
-        bracket. Simulated box scores (used only to break seeding ties) are drawn from each
-        manager's own scoring history - win/loss itself always comes from Elo.
+        {data
+          ? <>Each simulated season replays the rest of the regular season using every remaining
+            matchup&apos;s Elo win probability, seeds the top {data.playoffTeams} by simulated
+            record (points as tiebreak, same as real standings), then plays out the actual
+            playoff bracket. Simulated box scores (used only to break seeding ties) are drawn
+            from each manager&apos;s own scoring history - win/loss itself always comes from
+            Elo.</>
+          : preseasonData
+            ? <>Each simulated season has every manager play every other manager once, decided by
+              career Elo win probability, seeds the top {preseasonData.playoffTeams}, then plays
+              out the real playoff bracket structure. There&apos;s no actual schedule to draw on
+              yet, so treat this as a rough preseason power ranking, not a forecast.</>
+            : null}
       </p>
     </div>
   );
