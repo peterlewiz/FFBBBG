@@ -46,6 +46,8 @@ export interface SeasonData {
   season: string;
   status: string;
   playoffWeekStart: number | null;
+  /** How many teams make the playoff bracket - null if unset. */
+  playoffTeams: number | null;
   rosters: SeasonRoster[];
   weeks: WeekMatchup[]; // flattened, all weeks
   bracket: SleeperBracketMatch[] | null;
@@ -154,6 +156,7 @@ async function loadSeason(leagueId: string): Promise<{
       season: league.season,
       status: league.status,
       playoffWeekStart: league.settings.playoff_week_start ?? null,
+      playoffTeams: league.settings.playoff_teams ?? null,
       rosters: seasonRosters,
       weeks,
       bracket,

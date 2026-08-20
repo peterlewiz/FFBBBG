@@ -14,6 +14,7 @@ export interface SleeperLeague {
   draft_id: string | null;
   settings: {
     playoff_week_start?: number;
+    playoff_teams?: number;
     [key: string]: unknown;
   };
 }

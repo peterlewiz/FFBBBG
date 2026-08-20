@@ -21,6 +21,10 @@ predictions (see below).
   name from a dropdown, no login), shared across the whole league, with a
   leaderboard ranking everyone's pick accuracy. Needs Supabase configured
   (see below) — shows a friendly "not set up yet" message otherwise.
+- **Playoff Odds** — Monte Carlo simulation (10,000 season replays) off live
+  Elo ratings: each manager's odds of making the playoffs, their seed
+  distribution, and title odds, plus how much that's moved since last
+  week. Shows once the season has a schedule and at least one game played.
 - **Manager pages** (`/manager/:userId`) — career record, win %, points,
   Elo rank, prediction accuracy, a season-by-season breakdown (with that
   year's actual team name), and a full career scoring chart. Reachable by
@@ -48,6 +52,11 @@ manager pages).
 - `src/lib/elo.ts` — the Elo rating engine.
 - `src/lib/predictions.ts` + `src/lib/supabaseClient.ts` — the pick'em data
   layer (see Predictions setup below).
+- `src/lib/playoffOdds.ts` — the Monte Carlo simulation engine (remaining
+  regular season, seeding, and the actual playoff bracket - byes and all -
+  each replayed per simulation using Elo win probabilities);
+  `src/lib/playoffOddsSnapshots.ts` handles the weekly Supabase snapshot
+  the week-over-week delta is diffed against.
 - `src/lib/constants.ts` — draft-day date for the home page countdown.
 
 To point this at a different league, change `ROOT_LEAGUE_ID` in
@@ -88,19 +97,24 @@ code changes needed. See [`public/manager-images/README.md`](./public/manager-im
 for the exact filename convention (`<userId>.jpg`, keyed by Sleeper user
 ID so it survives team-name and even display-name changes).
 
-## Predictions setup (Supabase)
+## Predictions & Playoff Odds setup (Supabase)
 
-The Predictions page needs a small shared Postgres database so everyone's
-picks and the leaderboard are visible to the whole league, not just stored
-in one person's browser.
+The Predictions page and the Playoff Odds page's week-over-week delta both
+need a small shared Postgres database, so everyone's picks - and each
+week's odds snapshot - are visible to the whole league, not just stored in
+one person's browser.
 
 1. Create a free project at [supabase.com](https://supabase.com) (sign up →
    New Project → pick a name/region/DB password → wait ~2 min to provision).
 2. In the Supabase dashboard, go to **SQL Editor → New query**, paste the
    contents of [`supabase/schema.sql`](./supabase/schema.sql), and run it.
-   This creates the `predictions` table with public read/write enabled (see
-   the comment in that file for why — it matches this site's no-login
-   design, not meant as a security model for anything with real stakes).
+   This creates the `predictions` and `playoff_odds_snapshots` tables, both
+   with public read/write enabled (see the comment in that file for why —
+   it matches this site's no-login design, not meant as a security model
+   for anything with real stakes). Already set this up for Predictions
+   before Playoff Odds existed? Re-running the same file is safe - the
+   `predictions` table is created with `if not exists`, so it's skipped and
+   only the new table gets added.
 3. Go to **Project Settings → API** and copy the **Project URL** and
    **anon public key**.
 4. Locally: copy `.env.example` to `.env.local` and fill in those two
@@ -108,8 +122,9 @@ in one person's browser.
 5. In production: add the same two variables in **Vercel → Project →
    Settings → Environment Variables**, then redeploy.
 
-Without these set, every other page still works — Predictions just shows a
-"not set up yet" message instead of crashing.
+Without these set, every other page still works: Predictions shows a "not
+set up yet" message instead of crashing, and Playoff Odds still computes
+and shows live odds - it just can't show a week-over-week delta.
 
 ## Local development
 
@@ -135,5 +150,5 @@ Outputs a static site to `dist/` — no server required to host it.
 - **Domain:** `bbbgleague.com`, registered via [Porkbun](https://porkbun.com),
   DNS pointed at Vercel (`A` record on `@` → `76.76.21.21`, `CNAME` on `www`
   → `cname.vercel-dns.com`).
-- **Predictions database:** [Supabase](https://supabase.com) free tier —
-  see setup steps above.
+- **Predictions & playoff odds database:** [Supabase](https://supabase.com)
+  free tier — see setup steps above.

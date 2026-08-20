@@ -2,7 +2,7 @@
 // league history from Sleeper on every page load.
 
 const DEFAULT_TTL_MS = 45 * 60 * 1000; // 45 minutes
-const PREFIX = "sleeper-site-cache:v5:";
+const PREFIX = "sleeper-site-cache:v6:";
 
 interface CacheEnvelope<T> {
   storedAt: number;

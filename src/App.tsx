@@ -18,6 +18,9 @@ const Predictions = lazy(() =>
 const ManagerDetail = lazy(() =>
   import("./pages/ManagerDetail").then((m) => ({ default: m.ManagerDetail })),
 );
+const PlayoffOdds = lazy(() =>
+  import("./pages/PlayoffOdds").then((m) => ({ default: m.PlayoffOdds })),
+);
 
 function App() {
   return (
@@ -28,6 +31,7 @@ function App() {
         <Route path="graphs" element={<Graphs />} />
         <Route path="elo" element={<Elo />} />
         <Route path="predictions" element={<Predictions />} />
+        <Route path="playoff-odds" element={<PlayoffOdds />} />
         <Route path="manager/:userId" element={<ManagerDetail />} />
       </Route>
     </Routes>

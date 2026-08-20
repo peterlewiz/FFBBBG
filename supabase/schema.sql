@@ -36,3 +36,32 @@ create policy "public insert" on predictions
 
 create policy "public update" on predictions
   for update using (true) with check (true);
+
+-- Weekly snapshots of the Monte Carlo playoff odds, so the page can show
+-- "up/down since last week" against a fixed number instead of comparing
+-- a live computation to itself. `week` is the current NFL week (Sleeper's
+-- own clock) at the time it was written - whichever visit is the last one
+-- in a given week naturally leaves that week's final snapshot in place,
+-- since it's overwritten in-place until the NFL week advances past it.
+create table if not exists playoff_odds_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  league_id text not null,
+  season text not null,
+  week int not null,
+  user_id text not null,
+  playoff_pct numeric not null,
+  title_pct numeric not null,
+  computed_at timestamptz not null default now(),
+  unique (league_id, season, week, user_id)
+);
+
+alter table playoff_odds_snapshots enable row level security;
+
+create policy "public read" on playoff_odds_snapshots
+  for select using (true);
+
+create policy "public insert" on playoff_odds_snapshots
+  for insert with check (true);
+
+create policy "public update" on playoff_odds_snapshots
+  for update using (true) with check (true);
