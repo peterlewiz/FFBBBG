@@ -52,6 +52,12 @@ export function PowerRankingsWidget({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-primary">
                     {entry.manager.displayName}
+                    {/* Not in this year's draft = no longer in the league. */}
+                    {draftOrder && draftOrder[entry.manager.userId] === undefined && (
+                      <span className="ml-1" title="No longer in the league">
+                        💀
+                      </span>
+                    )}
                   </p>
                   <p className="truncate text-xs text-muted">
                     {entry.titles > 0 && (
