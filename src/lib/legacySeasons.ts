@@ -44,7 +44,7 @@ export const LEGACY_SEASONS: LegacySeason[] = [
       { rank: 1, userId: "739228047332548608", wins: 9, losses: 4, ties: 0 }, // frtheo
       { rank: 2, userId: "718138810201878528", wins: 9, losses: 4, ties: 0 }, // Shady43
       { rank: 3, userId: "739598324197392384", wins: 7, losses: 6, ties: 0 }, // KokoM
-      { rank: 4, userId: null, name: "Mario", wins: 9, losses: 4, ties: 0 },
+      { rank: 4, userId: "739228718886711296", wins: 9, losses: 4, ties: 0 }, // MarioM26
       { rank: 5, userId: "738538726719930368", wins: 5, losses: 8, ties: 0 }, // 3mojt
       { rank: 6, userId: "738510505450283008", wins: 7, losses: 6, ties: 0 }, // plewiz
       { rank: 7, userId: "740737264774217728", wins: 5, losses: 8, ties: 0 }, // maryghaly
