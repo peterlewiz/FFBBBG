@@ -33,7 +33,7 @@ function Side({
 
   return (
     <div
-      className={`relative flex flex-1 flex-col items-center gap-2 px-3 py-5 sm:px-6 ${
+      className={`relative flex min-w-0 flex-1 flex-col items-center gap-2 px-2 py-5 sm:px-6 ${
         isLeft ? "sm:items-start" : "sm:items-end"
       }`}
     >
@@ -56,14 +56,14 @@ function Side({
         <img
           src={avatarSrc(manager.userId)}
           alt=""
-          className="h-20 w-20 rounded-full object-cover sm:h-24 sm:w-24"
+          className="h-14 w-14 rounded-full object-cover sm:h-24 sm:w-24"
           style={{
             border: `2px solid ${color}`,
             boxShadow: `0 0 26px ${teamColorAlpha(manager.userId, 0.55)}`,
           }}
         />
         <p
-          className={`max-w-[9rem] truncate text-center text-sm font-extrabold sm:max-w-[11rem] sm:text-base ${
+          className={`max-w-[6rem] truncate text-center text-xs font-extrabold sm:max-w-[11rem] sm:text-base ${
             isLeft ? "sm:text-left" : "sm:text-right"
           }`}
           style={{ color, textShadow: `0 0 18px ${teamColorAlpha(manager.userId, 0.6)}` }}
@@ -136,9 +136,9 @@ export function FightCard({
       <div className="flex items-stretch">
         <Side fighter={left} align="left" />
 
-        <div className="relative z-10 flex shrink-0 flex-col items-center justify-center gap-1 px-2 sm:px-4">
+        <div className="relative z-10 flex shrink-0 flex-col items-center justify-center gap-1 px-1.5 sm:px-4">
           {centerLabel && (
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
+            <span className="max-w-[4.5rem] text-center text-[9px] font-bold uppercase leading-tight tracking-[0.1em] text-muted sm:max-w-none sm:tracking-[0.2em]">
               {centerLabel}
             </span>
           )}
