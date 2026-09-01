@@ -144,8 +144,13 @@ export function DraftAssistant() {
     // that a top-10-per-position free tier can't actually support.
     return [...list]
       .sort((a, b) => {
-        const aHasExpert = a.expertRank !== null;
-        const bHasExpert = b.expertRank !== null;
+        // `!= null` (loose) catches both null and a merely-absent field
+        // (undefined) the same way - a stale cached player object from
+        // before this field existed is `undefined`, not `null`, and a
+        // strict `!==` check let that silently corrupt this sort (see
+        // players.ts's CACHE_KEY comment for the full story).
+        const aHasExpert = a.expertRank != null;
+        const bHasExpert = b.expertRank != null;
         if (aHasExpert !== bHasExpert) return aHasExpert ? -1 : 1;
         if (aHasExpert && bHasExpert) return a.expertRank! - b.expertRank!;
         return a.searchRank - b.searchRank;
@@ -429,7 +434,7 @@ function PlayerRow({
         <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">
           {player.position}
         </span>
-        {player.posRank !== null && (
+        {player.posRank != null && (
           <span
             className="w-10 shrink-0 text-xs font-bold tabular-nums text-neon"
             title="FantasyPros half-PPR expert consensus rank"
@@ -440,7 +445,7 @@ function PlayerRow({
         <span className={`flex-1 truncate font-medium ${state === "gone" ? "line-through" : "text-primary"}`}>
           {player.name}
         </span>
-        {player.byeWeek !== null && (
+        {player.byeWeek != null && (
           <span className="w-8 shrink-0 text-center text-[10px] text-muted" title="Bye week">
             BYE {player.byeWeek}
           </span>
