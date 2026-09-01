@@ -25,8 +25,13 @@ import { TeamBadge } from "../components/TeamBadge";
 const PLEWIZ_USER_ID = "738510505450283008";
 const POSITIONS: FantasyPosition[] = ["QB", "RB", "WR", "TE", "K", "DEF"];
 const BOARD_STORAGE_KEY = "draft-assistant:board:v1";
-const MOCK_DRAFT_STORAGE_KEY = "draft-assistant:mock-draft-id:v1";
-const DEFAULT_MOCK_DRAFT_ID = "1400527013218902016";
+// Bumped alongside DEFAULT_MOCK_DRAFT_ID: a previously-saved (now
+// finished/abandoned) mock's ID would otherwise win over the new
+// default forever, since the saved value is read on mount. Bumping the
+// key retires the old saved value so a fresh mock opens straight away;
+// pasting any other draft ID into the box still overrides and persists.
+const MOCK_DRAFT_STORAGE_KEY = "draft-assistant:mock-draft-id:v2";
+const DEFAULT_MOCK_DRAFT_ID = "1400534735561756672";
 
 type BoardMark = "mine" | "gone";
 
