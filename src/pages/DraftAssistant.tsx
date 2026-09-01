@@ -331,6 +331,78 @@ export function DraftAssistant() {
         <Countdown target={resolveDraftDate(draft.start_time)} label="Draft Day" />
       )}
 
+      {/* Player board - kept at the top since it's what actually gets used
+       * throughout a live draft (click to mark drafted/mine), not
+       * something you read once and scroll past. */}
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-primary">Player Board</h2>
+          <p className="text-xs text-muted">
+            {expertRankingsAvailable ? (
+              <>
+                QB/RB/WR/TE ranked by FantasyPros' half-PPR expert consensus (shown as a
+                highlighted rank, e.g. "RB4"){" "}
+                {expertRankingsStale && <span className="text-amber-400">(showing a cached, slightly stale copy)</span>}
+                {!expertRankingsFullDepth && " - free tier: only each position's top 10 is real consensus, rest falls back to Sleeper's relevance ranking"}
+                . K/DEF use Sleeper's relevance ranking.
+              </>
+            ) : (
+              "Ranked by Sleeper's own relevance ranking (FantasyPros data unavailable right now)."
+            )}{" "}
+            Click a player to mark drafted/mine; live picks override this once the draft starts.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+          {(["ALL", ...POSITIONS] as const).map((pos) => (
+            <button
+              key={pos}
+              onClick={() => setPositionFilter(pos)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                positionFilter === pos ? "bg-neon text-ink" : "bg-surface-2 text-body hover:bg-line"
+              }`}
+            >
+              {pos}
+            </button>
+          ))}
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name…"
+            className="ml-auto rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
+          />
+        </div>
+        {playersLoading ? (
+          <p className="px-5 py-6 text-sm text-muted">Loading player pool (~15MB, cached for a day)…</p>
+        ) : playersError ? (
+          <p className="px-5 py-6 text-sm text-red-400">{playersError}</p>
+        ) : (
+          <ul className="max-h-[36rem] divide-y divide-line overflow-y-auto">
+            {filteredPlayers.map((p) => {
+              const live = livePicks.get(p.id);
+              const manual = board[p.id];
+              const state: "available" | "gone" | "mine" = live
+                ? live.mine
+                  ? "mine"
+                  : "gone"
+                : manual === "mine"
+                  ? "mine"
+                  : manual === "gone"
+                    ? "gone"
+                    : "available";
+              return (
+                <PlayerRow
+                  key={p.id}
+                  player={p}
+                  state={state}
+                  liveManagerName={live?.managerName ?? null}
+                  onClick={() => !live && cycleMark(p.id)}
+                />
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       {/* Your draft slots */}
       {myDraftSlots.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
@@ -806,75 +878,6 @@ export function DraftAssistant() {
         </div>
       </div>
 
-      {/* Player board */}
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-lg font-semibold text-primary">Player Board</h2>
-          <p className="text-xs text-muted">
-            {expertRankingsAvailable ? (
-              <>
-                QB/RB/WR/TE ranked by FantasyPros' half-PPR expert consensus (shown as a
-                highlighted rank, e.g. "RB4"){" "}
-                {expertRankingsStale && <span className="text-amber-400">(showing a cached, slightly stale copy)</span>}
-                {!expertRankingsFullDepth && " - free tier: only each position's top 10 is real consensus, rest falls back to Sleeper's relevance ranking"}
-                . K/DEF use Sleeper's relevance ranking.
-              </>
-            ) : (
-              "Ranked by Sleeper's own relevance ranking (FantasyPros data unavailable right now)."
-            )}{" "}
-            Click a player to mark drafted/mine; live picks override this once the draft starts.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-          {(["ALL", ...POSITIONS] as const).map((pos) => (
-            <button
-              key={pos}
-              onClick={() => setPositionFilter(pos)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                positionFilter === pos ? "bg-neon text-ink" : "bg-surface-2 text-body hover:bg-line"
-              }`}
-            >
-              {pos}
-            </button>
-          ))}
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name…"
-            className="ml-auto rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
-          />
-        </div>
-        {playersLoading ? (
-          <p className="px-5 py-6 text-sm text-muted">Loading player pool (~15MB, cached for a day)…</p>
-        ) : playersError ? (
-          <p className="px-5 py-6 text-sm text-red-400">{playersError}</p>
-        ) : (
-          <ul className="max-h-[36rem] divide-y divide-line overflow-y-auto">
-            {filteredPlayers.map((p) => {
-              const live = livePicks.get(p.id);
-              const manual = board[p.id];
-              const state: "available" | "gone" | "mine" = live
-                ? live.mine
-                  ? "mine"
-                  : "gone"
-                : manual === "mine"
-                  ? "mine"
-                  : manual === "gone"
-                    ? "gone"
-                    : "available";
-              return (
-                <PlayerRow
-                  key={p.id}
-                  player={p}
-                  state={state}
-                  liveManagerName={live?.managerName ?? null}
-                  onClick={() => !live && cycleMark(p.id)}
-                />
-              );
-            })}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }
