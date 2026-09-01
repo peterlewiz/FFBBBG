@@ -11,6 +11,15 @@
 // if the plan ever reverts to free.
 import { createClient } from "@supabase/supabase-js";
 
+// Worst case (every one of the 8 rankings+projections groups stale at
+// once, e.g. the very first request after a cache-key change) needs ~8
+// sequential upstream calls spaced >=1.1s apart for the account's 1
+// req/sec limit, plus fetch + Supabase-write time each - comfortably
+// past Vercel's default 10s function timeout. Any single group is still
+// fast; only the rare "everything expired simultaneously" case needs
+// the room.
+export const config = { maxDuration: 30 };
+
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h - plenty of headroom on 500/day, fresher than before
 const HALF_PPR = "HALF";
 
@@ -59,7 +68,24 @@ async function fetchFromCache(supabase, cacheKey) {
   return { row: data, error: null };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The account is rate-limited to 1 request/second - confirmed live: a
+// tight loop over all 8 rankings+projections calls got a 429 on the
+// last one or two before this existed, since consecutive `fetch()`
+// calls can easily resolve faster than a second apart on a fast
+// connection. minInterval keeps consecutive upstream calls spaced out
+// regardless of how quickly each one actually resolves.
+let lastFantasyProsCallAt = 0;
+const MIN_INTERVAL_MS = 1100;
+
 async function fetchFromFantasyPros(apiKey, urlBuilder) {
+  const waitFor = lastFantasyProsCallAt + MIN_INTERVAL_MS - Date.now();
+  if (waitFor > 0) await sleep(waitFor);
+  lastFantasyProsCallAt = Date.now();
+
   const year = new Date().getFullYear();
   const res = await fetch(cacheBustedUrl(urlBuilder(year)), {
     headers: { "x-api-key": apiKey, "Cache-Control": "no-cache" },
