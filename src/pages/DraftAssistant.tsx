@@ -64,6 +64,7 @@ export function DraftAssistant() {
     error: playersError,
     expertRankingsAvailable,
     expertRankingsStale,
+    expertRankingsFullDepth,
   } = usePlayerPool();
 
   const [board, setBoard] = useState<Record<string, BoardMark>>({});
@@ -120,6 +121,22 @@ export function DraftAssistant() {
     () => (league && players.length > 0 ? computePositionalScarcity(league, players) : []),
     [league, players],
   );
+  // Real "value over consensus": projectedRank (FantasyPros' own point
+  // projections, ranked within position) vs expertRank (their expert
+  // consensus rank, same position). Positive gap = the raw numbers like
+  // this player more than the market does - a sleeper. Negative = priced
+  // above what the projection itself expects - a fade. Both sides come
+  // from the same source, at the same depth, so this is a real
+  // comparison, not a proxy.
+  const sleepersAndFades = useMemo(() => {
+    const withGap = players.filter(
+      (p) => p.valueGap !== null && (p.position === "QB" || p.position === "RB" || p.position === "WR" || p.position === "TE"),
+    );
+    const sleepers = [...withGap].sort((a, b) => b.valueGap! - a.valueGap!).slice(0, 10);
+    const fades = [...withGap].sort((a, b) => a.valueGap! - b.valueGap!).slice(0, 10);
+    return { sleepers, fades };
+  }, [players]);
+
   const playoffLine = useMemo(() => (history ? computeHistoricalPlayoffLine(history) : []), [history]);
   const powerRankings = useMemo(() => (history ? computeAllTimePowerRankings(history) : []), [history]);
   const sackoCounts = useMemo(() => (history ? getSackoCounts(history) : []), [history]);
@@ -219,6 +236,59 @@ export function DraftAssistant() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Sleepers & fades: FantasyPros' own projected points, ranked
+       * within position, compared against their own expert consensus
+       * rank for the same position - a real value-over-consensus signal,
+       * not a proxy heuristic. */}
+      {(sleepersAndFades.sleepers.length > 0 || sleepersAndFades.fades.length > 0) && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-2xl border border-emerald-500/30 bg-surface">
+            <div className="border-b border-line px-5 py-4">
+              <h2 className="text-lg font-semibold text-emerald-400">🔥 Sleepers</h2>
+              <p className="text-xs text-muted">
+                The point projection ranks these players better than the experts do
+              </p>
+            </div>
+            <ul className="divide-y divide-line">
+              {sleepersAndFades.sleepers.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                  <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">{p.position}</span>
+                  <span className="flex-1 truncate font-medium text-primary">{p.name}</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    {p.posRank} proj. #{p.projectedRank}
+                  </span>
+                  <span className="w-10 shrink-0 text-right text-sm font-bold text-emerald-400">
+                    +{p.valueGap}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-red-500/30 bg-surface">
+            <div className="border-b border-line px-5 py-4">
+              <h2 className="text-lg font-semibold text-red-400">⚠️ Fades</h2>
+              <p className="text-xs text-muted">
+                Priced above what the point projection itself expects for them
+              </p>
+            </div>
+            <ul className="divide-y divide-line">
+              {sleepersAndFades.fades.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                  <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">{p.position}</span>
+                  <span className="flex-1 truncate font-medium text-primary">{p.name}</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    {p.posRank} proj. #{p.projectedRank}
+                  </span>
+                  <span className="w-10 shrink-0 text-right text-sm font-bold text-red-400">
+                    {p.valueGap}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -341,11 +411,11 @@ export function DraftAssistant() {
           <p className="text-xs text-muted">
             {expertRankingsAvailable ? (
               <>
-                Each position's real top 10 is FantasyPros' half-PPR expert consensus (shown as a
+                QB/RB/WR/TE ranked by FantasyPros' half-PPR expert consensus (shown as a
                 highlighted rank, e.g. "RB4"){" "}
                 {expertRankingsStale && <span className="text-amber-400">(showing a cached, slightly stale copy)</span>}
-                - the free API tier caps every request at 10 players, so depth past that (and all
-                of K/DEF) falls back to Sleeper's relevance ranking instead.
+                {!expertRankingsFullDepth && " - free tier: only each position's top 10 is real consensus, rest falls back to Sleeper's relevance ranking"}
+                . K/DEF use Sleeper's relevance ranking.
               </>
             ) : (
               "Ranked by Sleeper's own relevance ranking (FantasyPros data unavailable right now)."
@@ -445,6 +515,18 @@ function PlayerRow({
         <span className={`flex-1 truncate font-medium ${state === "gone" ? "line-through" : "text-primary"}`}>
           {player.name}
         </span>
+        {player.valueGap !== null && Math.abs(player.valueGap) >= 5 && (
+          <span
+            className="shrink-0 text-sm"
+            title={
+              player.valueGap > 0
+                ? `Projection ranks them ${player.valueGap} spots better than consensus`
+                : `Projection ranks them ${Math.abs(player.valueGap)} spots worse than consensus`
+            }
+          >
+            {player.valueGap > 0 ? "🔥" : "⚠️"}
+          </span>
+        )}
         {player.byeWeek != null && (
           <span className="w-8 shrink-0 text-center text-[10px] text-muted" title="Bye week">
             BYE {player.byeWeek}

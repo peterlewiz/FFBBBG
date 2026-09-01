@@ -1,37 +1,53 @@
 // Vercel serverless function - proxies FantasyPros' consensus-rankings
-// API. Never called with the API key from the browser: that key stays
-// server-side only (FANTASYPROS_API_KEY, set in Vercel's project env
-// vars, no VITE_ prefix so it's never bundled into client JS).
+// and projections APIs. Never called with the API key from the browser:
+// that key stays server-side only (FANTASYPROS_API_KEY, set in Vercel's
+// project env vars, no VITE_ prefix so it's never bundled into client
+// JS).
 //
-// FantasyPros' free tier allows 50 requests/day *total*, shared across
-// everything using this key. This function is the only thing allowed to
-// spend that budget, and it only does so when the Supabase-backed cache
-// for a given position group is older than CACHE_TTL_MS - however many
-// times this endpoint itself gets hit (by one visitor or a hundred),
-// the real upstream call happens at most once per TTL window per
-// position group.
+// Now on the premium tier (500 requests/day, full-depth responses - no
+// more 10-player cap). Still cached in Supabase rather than fetched on
+// every page view: no reason to burn quota re-fetching data that's only
+// going to change a handful of times a day, and it keeps this resilient
+// if the plan ever reverts to free.
 import { createClient } from "@supabase/supabase-js";
 
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h - a couple of real calls/day, well under 50
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h - plenty of headroom on 500/day, fresher than before
 const HALF_PPR = "HALF";
 
-// The free tier hard-caps every response at the top 10 players,
-// regardless of which position is queried (confirmed live: the response
-// carries "public_api_limited": true and "limit": 10). A blended "OP"
-// (QB/RB/WR) request would burn most of those 10 slots on QBs alone -
-// this league's real 2026 consensus has 6-7 QBs inside the overall top
-// 10 - and return almost no RB/WR depth. Querying each position on its
-// own instead gets the real top 10 *within* that position, which is
-// both more useful for actual draft-day comparisons and a better use of
-// the same 4 requests. K/DEF are left to Sleeper's own data: there's so
-// little real skill differentiation there that spending API quota on
-// them isn't worth it.
-const GROUPS = [
-  { cacheKey: "fp-qb-half", position: "QB" },
-  { cacheKey: "fp-rb-half", position: "RB" },
-  { cacheKey: "fp-wr-half", position: "WR" },
-  { cacheKey: "fp-te-half", position: "TE" },
-];
+// FantasyPros' own CDN caches responses by URL, independent of the
+// calling account's plan - confirmed live: right after upgrading to
+// premium, the *exact same request* kept coming back tagged
+// "tier": "free" with the old 10-player cap until a cache-busting query
+// param forced a miss. Every upstream call includes one for exactly
+// this reason - without it, a plan upgrade (or any account change)
+// could silently keep serving stale entitlements indefinitely.
+function cacheBustedUrl(url) {
+  const u = new URL(url);
+  u.searchParams.set("_cb", Date.now().toString());
+  return u.toString();
+}
+
+// Rankings: real expert consensus (ECR), full depth per position now.
+// Projections: real projected 2026 season stats, including points_half -
+// this league's actual scoring format - which is what makes genuine
+// "value over consensus" comparisons possible (see src/lib/players.ts).
+const POSITIONS = ["QB", "RB", "WR", "TE"];
+const GROUPS = POSITIONS.flatMap((position) => [
+  {
+    cacheKey: `fp-rank-${position.toLowerCase()}-half`,
+    kind: "rankings",
+    position,
+    url: (year) =>
+      `https://api.fantasypros.com/public/v2/json/nfl/${year}/consensus-rankings?type=ST&position=${position}&scoring=${HALF_PPR}`,
+  },
+  {
+    cacheKey: `fp-proj-${position.toLowerCase()}-half`,
+    kind: "projections",
+    position,
+    url: (year) =>
+      `https://api.fantasypros.com/public/v2/json/nfl/${year}/projections?position=${position}&week=0&scoring=${HALF_PPR}`,
+  },
+]);
 
 async function fetchFromCache(supabase, cacheKey) {
   const { data, error } = await supabase
@@ -43,12 +59,13 @@ async function fetchFromCache(supabase, cacheKey) {
   return { row: data, error: null };
 }
 
-async function fetchFromFantasyPros(apiKey, position) {
+async function fetchFromFantasyPros(apiKey, urlBuilder) {
   const year = new Date().getFullYear();
-  const url = `https://api.fantasypros.com/public/v2/json/nfl/${year}/consensus-rankings?type=ST&position=${position}&scoring=${HALF_PPR}`;
-  const res = await fetch(url, { headers: { "x-api-key": apiKey } });
+  const res = await fetch(cacheBustedUrl(urlBuilder(year)), {
+    headers: { "x-api-key": apiKey, "Cache-Control": "no-cache" },
+  });
   if (!res.ok) {
-    throw new Error(`FantasyPros request failed for ${position}: ${res.status}`);
+    throw new Error(`FantasyPros request failed (${res.status})`);
   }
   return res.json();
 }
@@ -65,72 +82,69 @@ export default async function handler(req, res) {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const debug = req.query?.debug === "1";
-  const result = {};
+  const rankings = {};
+  const projections = {};
   const errors = [];
   const debugInfo = {};
 
   for (const group of GROUPS) {
+    const target = group.kind === "rankings" ? rankings : projections;
     const { row: cached, error: readError } = await fetchFromCache(supabase, group.cacheKey);
-    if (readError && debug) debugInfo[group.position] = { readError: readError.message };
+    if (readError && debug) debugInfo[group.cacheKey] = { readError: readError.message };
     const isFresh = cached && Date.now() - new Date(cached.fetched_at).getTime() < CACHE_TTL_MS;
 
     // A broken cache (missing table, bad RLS, etc.) must never turn into
-    // "call FantasyPros on every single request" - that's the one thing
-    // this whole function exists to prevent. If we can't even read the
-    // cache, surface the error instead of silently falling through to a
-    // real upstream call.
+    // "call FantasyPros on every single request" - if we can't even read
+    // the cache, surface the error instead of silently falling through
+    // to a real upstream call.
     if (readError) {
-      errors.push(`${group.position}: cache read failed - ${readError.message}`);
+      errors.push(`${group.cacheKey}: cache read failed - ${readError.message}`);
       continue;
     }
 
     if (isFresh) {
-      result[group.position] = { ...cached.data, cached: true, fetchedAt: cached.fetched_at };
+      target[group.position] = { ...cached.data, cached: true, fetchedAt: cached.fetched_at };
       continue;
     }
 
     if (!apiKey) {
       if (cached) {
-        result[group.position] = { ...cached.data, cached: true, stale: true, fetchedAt: cached.fetched_at };
+        target[group.position] = { ...cached.data, cached: true, stale: true, fetchedAt: cached.fetched_at };
       } else {
-        errors.push(`${group.position}: no cache and no API key configured`);
+        errors.push(`${group.cacheKey}: no cache and no API key configured`);
       }
       continue;
     }
 
     try {
-      const fresh = await fetchFromFantasyPros(apiKey, group.position);
+      const fresh = await fetchFromFantasyPros(apiKey, group.url);
       const fetchedAt = new Date().toISOString();
       const { error: writeError } = await supabase
         .from("fantasypros_cache")
         .upsert({ cache_key: group.cacheKey, data: fresh, fetched_at: fetchedAt });
       if (writeError) {
-        // We already spent the upstream request - still return the data -
-        // but surface this loudly, since it means the *next* request will
-        // spend another one instead of reading this from cache.
-        errors.push(`${group.position}: cache write failed (will re-fetch next time) - ${writeError.message}`);
-        if (debug) debugInfo[group.position] = { ...debugInfo[group.position], writeError: writeError.message };
+        errors.push(`${group.cacheKey}: cache write failed (will re-fetch next time) - ${writeError.message}`);
+        if (debug) debugInfo[group.cacheKey] = { ...debugInfo[group.cacheKey], writeError: writeError.message };
       }
-      result[group.position] = { ...fresh, cached: false, fetchedAt };
+      target[group.position] = { ...fresh, cached: false, fetchedAt };
     } catch (err) {
-      // Upstream failed (rate limit, outage, etc.) - fall back to
-      // whatever's cached, even stale, rather than show nothing.
       if (cached) {
-        result[group.position] = { ...cached.data, cached: true, stale: true, fetchedAt: cached.fetched_at };
+        target[group.position] = { ...cached.data, cached: true, stale: true, fetchedAt: cached.fetched_at };
       } else {
-        errors.push(err instanceof Error ? err.message : String(err));
+        errors.push(`${group.cacheKey}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
 
-  if (Object.keys(result).length === 0) {
+  if (Object.keys(rankings).length === 0 && Object.keys(projections).length === 0) {
     res.status(502).json({ error: errors.join("; ") || "Failed to load rankings", debug: debug ? debugInfo : undefined });
     return;
   }
 
   res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
   res.status(200).json({
-    groups: result,
+    rankings,
+    projections,
     errors: errors.length > 0 ? errors : undefined,
     debug: debug ? debugInfo : undefined,
   });

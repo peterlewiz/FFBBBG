@@ -30,7 +30,7 @@ const CAP_PER_POSITION: Record<FantasyPosition, number> = {
 // unmatched players (see mergeExpertRankings/expertRank): `undefined`
 // isn't `null`, so a strict `!== null` check treated a merely-absent
 // field as "has a real expert rank", which the sort could put anywhere.
-const CACHE_KEY = "players:fantasy-relevant:v2";
+const CACHE_KEY = "players:fantasy-relevant:v3";
 // Sleeper asks that this endpoint only be hit about once a day.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -50,20 +50,33 @@ export interface DraftPlayer {
   injuryStatus: string | null;
   /**
    * FantasyPros half-PPR expert consensus rank, within this player's own
-   * position (matches `posRank`, e.g. expertRank 4 = posRank "RB4"). The
-   * free API tier hard-caps every position query at its top 10, so this
-   * is only ever set for someone's real top 10 at their position - null
-   * otherwise, including for anyone FantasyPros data wasn't available
-   * for or the name-match missed. There's no cross-position blended
-   * source at this tier, so this number is *not* comparable between
-   * different positions (a QB with expertRank 3 isn't "better than" an
-   * RB with expertRank 5) - it's a within-position sort key only.
+   * position (matches `posRank`, e.g. expertRank 4 = posRank "RB4").
+   * Null if FantasyPros data wasn't available or didn't include this
+   * player. Not comparable between different positions (a QB with
+   * expertRank 3 isn't "better than" an RB with expertRank 5) - it's a
+   * within-position sort key.
    */
   expertRank: number | null;
   /** Human-readable position rank, e.g. "RB4" - same data as expertRank. */
   posRank: string | null;
   expertTier: number | null;
   byeWeek: number | null;
+  /** FantasyPros' projected half-PPR points for the full 2026 season. */
+  projectedPoints: number | null;
+  /** This player's rank within their position by projectedPoints alone -
+   * "what the numbers say" for comparison against expertRank ("what the
+   * market/experts say"). */
+  projectedRank: number | null;
+  /**
+   * expertRank minus projectedRank, when both exist. Positive = the raw
+   * point projection ranks this player better than expert consensus does
+   * (a sleeper: the numbers like them more than the market does).
+   * Negative = consensus ranks them better than the numbers do (a fade -
+   * likely priced on name value/last year's results more than the
+   * upcoming season's actual expected production). Null if either side
+   * is missing, which is common outside a position's top ~50-100 or so.
+   */
+  valueGap: number | null;
 }
 
 function isFantasyPosition(p: string | null): p is FantasyPosition {
@@ -101,6 +114,9 @@ function trimAndCap(raw: Record<string, SleeperPlayer>): DraftPlayer[] {
       posRank: null,
       expertTier: null,
       byeWeek: null,
+      projectedPoints: null,
+      projectedRank: null,
+      valueGap: null,
     });
   }
 
@@ -126,15 +142,29 @@ export async function loadDraftPlayerPool(): Promise<DraftPlayer[]> {
   return trimmed;
 }
 
+// How deep each position stays fantasy-relevant, for the value-gap
+// calculation only (expertRank/posRank/projectedPoints display for
+// every real match regardless). Verified live: without this, the
+// "biggest gaps" were almost all fullbacks and 4th-string depth (a
+// player ranked RB150 by consensus but with *some* baseline projected
+// points reads as a huge "sleeper" gap that's actually just noise from
+// two models barely disagreeing about someone nobody would draft).
+// These match typical redraft-relevant depth: QB/TE are shallow
+// positions with a real cliff, RB/WR stay relevant much deeper.
+const VALUE_GAP_RELEVANCE_CUTOFF: Record<string, number> = {
+  QB: 24,
+  RB: 60,
+  WR: 70,
+  TE: 24,
+};
+
 /**
- * Folds FantasyPros' half-PPR expert consensus into the Sleeper-derived
- * pool, matched by normalized name + position (the two APIs use
- * different player IDs, so name is the only shared key). Each position
- * (QB/RB/WR/TE) is queried on its own, so this only ever covers each
- * position's real top 10 - the free API tier's hard cap, confirmed live
- * ("public_api_limited": true). K/DEF are left on Sleeper's searchRank
- * untouched: FantasyPros quota isn't worth spending on positions with
- * this little real weekly skill differentiation.
+ * Folds FantasyPros' half-PPR expert consensus + projections into the
+ * Sleeper-derived pool, matched by normalized name + position (the two
+ * APIs use different player IDs, so name is the only shared key). K/DEF
+ * are left on Sleeper's searchRank untouched: FantasyPros quota isn't
+ * worth spending on positions with this little real weekly skill
+ * differentiation.
  */
 export function mergeExpertRankings(players: DraftPlayer[], fp: FantasyProsData): DraftPlayer[] {
   if (fp.players.length === 0) return players;
@@ -147,12 +177,25 @@ export function mergeExpertRankings(players: DraftPlayer[], fp: FantasyProsData)
   return players.map((player) => {
     const match = byKey.get(`${normalizePlayerName(player.name)}|${player.position}`);
     if (!match) return player;
+
+    const cutoff = VALUE_GAP_RELEVANCE_CUTOFF[player.position];
+    const bothRelevant =
+      match.rankEcr !== null &&
+      match.projectedRank !== null &&
+      cutoff !== undefined &&
+      match.rankEcr <= cutoff &&
+      match.projectedRank <= cutoff;
+    const valueGap = bothRelevant ? match.rankEcr! - match.projectedRank! : null;
+
     return {
       ...player,
       expertRank: match.rankEcr,
       posRank: match.posRank,
       expertTier: match.tier,
       byeWeek: match.byeWeek,
+      projectedPoints: match.projectedPoints,
+      projectedRank: match.projectedRank,
+      valueGap,
     };
   });
 }
@@ -163,6 +206,7 @@ export interface PlayerPoolState {
   error: string | null;
   expertRankingsAvailable: boolean;
   expertRankingsStale: boolean;
+  expertRankingsFullDepth: boolean;
 }
 
 export function usePlayerPool(): PlayerPoolState {
@@ -172,6 +216,7 @@ export function usePlayerPool(): PlayerPoolState {
     error: null,
     expertRankingsAvailable: false,
     expertRankingsStale: false,
+    expertRankingsFullDepth: false,
   });
 
   useEffect(() => {
@@ -186,6 +231,7 @@ export function usePlayerPool(): PlayerPoolState {
           error: null,
           expertRankingsAvailable: fp.players.length > 0,
           expertRankingsStale: fp.stale,
+          expertRankingsFullDepth: fp.fullDepth,
         });
       })
       .catch((err: unknown) => {
@@ -196,6 +242,7 @@ export function usePlayerPool(): PlayerPoolState {
             error: err instanceof Error ? err.message : "Failed to load player data",
             expertRankingsAvailable: false,
             expertRankingsStale: false,
+            expertRankingsFullDepth: false,
           });
         }
       });
