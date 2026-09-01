@@ -137,7 +137,11 @@ export function DraftAssistant() {
       for (const r of season.rosters) if (r.ownerUserId) rosterToUser.set(r.rosterId, r.ownerUserId);
     }
     for (const pick of picks) {
-      const userId = pick.picked_by || rosterToUser.get(pick.roster_id);
+      // roster_id is a real league roster id here (this is the actual
+      // league draft, not a mock) but can still be absent - picked_by is
+      // the primary signal either way.
+      const userId =
+        pick.picked_by || (pick.roster_id != null ? rosterToUser.get(pick.roster_id) : undefined);
       map.set(pick.player_id, {
         mine: userId === PLEWIZ_USER_ID,
         managerName: userId ? (history.managers[userId]?.displayName ?? null) : null,
@@ -208,10 +212,26 @@ export function DraftAssistant() {
     const mySlot = mockDraft.draft_order?.[PLEWIZ_USER_ID] ?? null;
     if (!mySlot) return null;
     const myOverallPicks = computeSnakeDraftSlots(mySlot, teams, rounds).map((s) => s.overall);
-    const myRosterId = mockDraft.slot_to_roster_id?.[String(mySlot)] ?? null;
     const draftedPlayerIds = new Set(mockPicks.map((p) => p.player_id));
+    // Identify your own picks by DRAFT SLOT, never by roster_id. Those
+    // are different id spaces - a real draft has draft_slot 1 mapping to
+    // roster_id 4, slot 2 to roster 3, slot 4 to roster 6 - and mock
+    // drafts have no league behind them, so roster_id can be null
+    // outright. Matching on roster_id found none of your picks, so the
+    // engine believed your roster was empty on every single pick: it
+    // never knew which positions you'd already filled, so the
+    // "no second TE while a starter slot is open" rule never fired and
+    // every position permanently looked like an unfilled starting slot.
+    // draft_slot is always populated and means exactly what we need;
+    // pick_no snake math is a belt-and-braces fallback.
     const myPlayerIds = new Set(
-      mockPicks.filter((p) => p.roster_id === myRosterId).map((p) => p.player_id),
+      mockPicks
+        .filter((p) => {
+          if (p.picked_by && p.picked_by === PLEWIZ_USER_ID) return true;
+          const slot = p.draft_slot ?? slotForOverallPick(p.pick_no, teams);
+          return slot === mySlot;
+        })
+        .map((p) => p.player_id),
     );
     const nextOverall = mockPicks.length + 1;
     const onTheClockSlot = slotForOverallPick(nextOverall, teams);

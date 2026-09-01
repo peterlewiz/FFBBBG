@@ -156,11 +156,18 @@ function needBonus(
   if (position === "K" || position === "DEF") {
     return round >= totalRounds - 2 ? 0 : -400;
   }
-  if (counts[position] < (req[position as keyof RosterRequirements] as number)) {
+  const shortfall = (req[position as keyof RosterRequirements] as number) - counts[position];
+  if (shortfall > 0) {
     // Ramps up as picks run out, so an unfilled starting slot gets
     // progressively more urgent instead of being left to the last round.
     const pressure = picksRemaining > 0 ? slotsLeft / picksRemaining : 1;
-    return 30 + 50 * Math.min(1, pressure);
+    // Needing TWO starters at a position is more urgent than needing
+    // one: you have to spend two picks there, and the second comes out
+    // of a pool that's still draining while you wait. Without this, a
+    // position you need twice (WR) scored identically to one you need
+    // once (QB) and lost on raw value - which is how you end up with
+    // one good QB and two leftover receivers.
+    return (30 + 50 * Math.min(1, pressure)) * (1 + 0.35 * (shortfall - 1));
   }
   if (FLEX_FILLERS.includes(position) && flexSurplus(counts, req) < req.flexSlots) return 12;
   const extra =

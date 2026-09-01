@@ -151,7 +151,15 @@ export interface SleeperPlayer {
 export interface SleeperDraftPick {
   pick_no: number;
   round: number;
-  roster_id: number;
+  /** The drafting POSITION (1 = first overall in round 1). This is the
+   * field that corresponds to a draft slot - `roster_id` is a different
+   * id space entirely (verified against a real draft: draft_slot 1 ->
+   * roster_id 4, slot 2 -> roster 3, slot 4 -> roster 6). Matching a
+   * drafter by roster_id will silently match nothing. */
+  draft_slot?: number;
+  /** League roster id - NOT the draft slot, and null in mock drafts,
+   * which have no league behind them. */
+  roster_id: number | null;
   player_id: string;
   picked_by: string; // user_id
 }
