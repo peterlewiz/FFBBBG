@@ -3,7 +3,9 @@ import type {
   SleeperLeague,
   SleeperMatchup,
   SleeperDraft,
+  SleeperDraftPick,
   SleeperNflState,
+  SleeperPlayer,
   SleeperRoster,
   SleeperUser,
 } from "./types";
@@ -62,6 +64,21 @@ export function getNflState(): Promise<SleeperNflState> {
 /** Draft details, including the commissioner-set start time. */
 export function getDraft(draftId: string): Promise<SleeperDraft> {
   return getJson(`/draft/${draftId}`);
+}
+
+/** Picks made so far in a live/completed draft - [] before it starts. */
+export function getDraftPicks(draftId: string): Promise<SleeperDraftPick[]> {
+  return getJson(`/draft/${draftId}/picks`);
+}
+
+/**
+ * Every player Sleeper has ever tracked (~15MB, ~12k entries, most of
+ * them irrelevant) - Sleeper's own docs ask that this only be fetched
+ * about once a day, not on every page load. Callers should cache a
+ * trimmed-down result, not this raw payload.
+ */
+export function getAllPlayers(): Promise<Record<string, SleeperPlayer>> {
+  return getJson(`/players/nfl`);
 }
 
 const MAX_REGULAR_SEASON_PLUS_PLAYOFF_WEEKS = 18;

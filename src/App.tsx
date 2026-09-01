@@ -29,6 +29,11 @@ const ManagerDetail = lazy(() =>
 const PlayoffOdds = lazy(() =>
   import("./pages/PlayoffOdds").then((m) => ({ default: m.PlayoffOdds })),
 );
+// Deliberately not in Layout's navItems - unlisted, reachable only by
+// typing the URL directly. See src/pages/DraftAssistant.tsx.
+const DraftAssistant = lazy(() =>
+  import("./pages/DraftAssistant").then((m) => ({ default: m.DraftAssistant })),
+);
 
 function App() {
   return (
@@ -41,6 +46,7 @@ function App() {
         <Route path="predictions" element={<Predictions />} />
         <Route path="playoff-odds" element={<PlayoffOdds />} />
         <Route path="manager/:userId" element={<ManagerDetail />} />
+        <Route path="draft" element={<DraftAssistant />} />
       </Route>
     </Routes>
   );

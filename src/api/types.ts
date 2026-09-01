@@ -15,8 +15,23 @@ export interface SleeperLeague {
   settings: {
     playoff_week_start?: number;
     playoff_teams?: number;
+    num_teams?: number;
+    /** How many players each team may keep into the next draft. */
+    max_keepers?: number;
+    trade_deadline?: number;
+    /** FAAB budget if using budget-based waivers; 0/absent for rolling
+     * priority waivers. */
+    waiver_budget?: number;
+    best_ball?: number; // 0 = normal lineup management, 1 = best ball
     [key: string]: unknown;
   };
+  /** Points awarded per statistical event - this league's actual scoring,
+   * not Sleeper's defaults. Keys are Sleeper's stat codes (e.g. "rec",
+   * "pass_td", "pts_allow_0"); see docs.sleeper.com for the full list. */
+  scoring_settings: Record<string, number>;
+  /** One entry per roster slot, including bench - e.g.
+   * ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF","BN","BN",...]. */
+  roster_positions: string[];
 }
 
 export interface SleeperDraft {
@@ -27,6 +42,10 @@ export interface SleeperDraft {
   /** user_id -> pick slot (1 = first overall). Set once the commissioner
    * randomizes/sets the order, even before the draft itself happens. */
   draft_order?: Record<string, number> | null;
+  settings?: {
+    rounds?: number;
+    [key: string]: unknown;
+  };
 }
 
 export interface SleeperUser {
@@ -84,4 +103,35 @@ export interface SleeperNflState {
   season: string;
   season_type: string; // "pre" | "regular" | "post"
   display_week: number;
+}
+
+// One entry in the ~12k-player universe from GET /players/nfl (a ~15MB
+// blob covering every player Sleeper has ever tracked, most of them long
+// retired or irrelevant). Only the fields the draft assistant needs.
+export interface SleeperPlayer {
+  player_id: string;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  position: string | null; // "QB" | "RB" | "WR" | "TE" | "K" | "DEF" | ...
+  team: string | null; // NFL team abbreviation, null if unrostered/retired
+  active: boolean;
+  /** Sleeper's own overall relevance ranking - lower is more relevant.
+   * Roughly tracks ADP/consensus value; not a projection. 9999999 for
+   * players with no meaningful ranking. */
+  search_rank?: number;
+  years_exp?: number | null;
+  age?: number | null;
+  status?: string | null; // "Active" | "Inactive" | "Injured Reserve" | ...
+  injury_status?: string | null; // "Questionable" | "Out" | "IR" | null
+}
+
+/** One completed pick from GET /draft/{id}/picks - empty array until the
+ * draft actually starts. */
+export interface SleeperDraftPick {
+  pick_no: number;
+  round: number;
+  roster_id: number;
+  player_id: string;
+  picked_by: string; // user_id
 }
