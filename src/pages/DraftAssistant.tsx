@@ -241,6 +241,13 @@ export function DraftAssistant() {
     // how hard the engine pushes to finish an incomplete starting lineup.
     const picksRemaining = myOverallPicks.filter((o) => o >= nextOverall).length;
     const myDraftedPlayers = players.filter((p) => myPlayerIds.has(p.id));
+    // Surfaced in the UI so it's obvious at a glance whether the engine
+    // is actually reading your roster - the roster_id bug made it think
+    // your team was empty all draft, and nothing on screen showed that.
+    const myPositionCounts = myDraftedPlayers.reduce<Record<string, number>>((acc, p) => {
+      acc[p.position] = (acc[p.position] ?? 0) + 1;
+      return acc;
+    }, {});
 
     let suggestions: PickSuggestion[] = [];
     if (players.length > 0 && mockDraft.status !== "complete") {
@@ -264,6 +271,7 @@ export function DraftAssistant() {
       currentRound,
       picksUntilMyNext,
       myDraftedPlayers,
+      myPositionCounts,
       suggestions,
       done: mockPicks.length >= teams * rounds,
     };
@@ -450,21 +458,37 @@ export function DraftAssistant() {
                 </div>
               )}
 
-              {mockDraftInfo.myDraftedPlayers.length > 0 && (
+              {/* Always rendered, even when empty - an all-zero line is the
+                * fastest signal that the engine has lost track of your
+                * picks, which is precisely what used to fail silently. */}
+              {
                 <div>
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">Your roster so far</p>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
+                    Your roster so far{" "}
+                    <span className="ml-1 font-mono normal-case text-neon">
+                      {(["QB", "RB", "WR", "TE", "K", "DEF"] as const)
+                        .map((pos) => `${pos}${mockDraftInfo.myPositionCounts[pos] ?? 0}`)
+                        .join(" · ")}
+                    </span>
+                  </p>
                   <div className="flex flex-wrap gap-2">
-                    {mockDraftInfo.myDraftedPlayers.map((p) => (
-                      <span
-                        key={p.id}
-                        className="rounded-full border border-line bg-surface-2 px-3 py-1 text-xs text-body"
-                      >
-                        {p.position} {p.name}
+                    {mockDraftInfo.myDraftedPlayers.length === 0 ? (
+                      <span className="text-xs text-muted">
+                        No picks of yours detected yet.
                       </span>
-                    ))}
+                    ) : (
+                      mockDraftInfo.myDraftedPlayers.map((p) => (
+                        <span
+                          key={p.id}
+                          className="rounded-full border border-line bg-surface-2 px-3 py-1 text-xs text-body"
+                        >
+                          {p.position} {p.name}
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
-              )}
+              }
             </div>
           )}
         </div>

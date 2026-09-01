@@ -176,6 +176,32 @@ function needBonus(
   return extra <= 0 ? -10 : extra === 1 ? -25 : -40;
 }
 
+/**
+ * How much of a player's value you could actually put in your starting
+ * lineup. This lineup is QB1/RB2/WR2/TE1/FLEX/K/DEF and the FLEX is
+ * realistically RB or WR, so a SECOND quarterback or tight end can
+ * never be started at all - their surplus value is bye-week and injury
+ * cover, nothing more. Treating all bench depth as equally valuable is
+ * how a backup QB or TE2 outranked a receiver who'd start every week.
+ * A third or fourth RB/WR is different: it rotates through the FLEX and
+ * you start two of them, so injuries and byes give it real usable value.
+ *
+ * Applied only to POSITIVE value. Scaling a negative down would make a
+ * bad unstartable player look *better*, the same inversion that made a
+ * multiplicative need factor wrong.
+ */
+function startableShare(
+  position: FantasyPosition,
+  counts: Record<FantasyPosition, number>,
+  req: RosterRequirements,
+): number {
+  if (counts[position] < (req[position as keyof RosterRequirements] as number)) return 1;
+  if (FLEX_FILLERS.includes(position) && flexSurplus(counts, req) < req.flexSlots) return 1;
+  if (position === "QB" || position === "TE") return 0.1;
+  if (position === "K" || position === "DEF") return 0.05;
+  return 0.35;
+}
+
 export interface PickSuggestion {
   player: DraftPlayer;
   /** Points-over-replacement against a stable, full-pool baseline -
@@ -271,7 +297,10 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     const fallback = bestSurvivorVbd.get(player.position) ?? vbd;
     const waitCost = Math.min(40, Math.max(0, vbd - fallback));
     const bonus = needBonus(player.position, myCounts, req, currentRound, totalRounds, slotsLeft, picksRemaining);
-    const score = vbd + bonus + waitCost;
+    // Discount value you couldn't actually deploy in a starting lineup.
+    const share = startableShare(player.position, myCounts, req);
+    const usableValue = vbd > 0 ? vbd * share : vbd;
+    const score = usableValue + bonus + waitCost * share;
 
     const reasons: string[] = [];
     reasons.push(`${player.posRank ?? player.position} by expert consensus`);
@@ -299,8 +328,10 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     }
     if (myCounts[player.position] < (req[player.position as keyof RosterRequirements] as number)) {
       reasons.push(`Fills an open starting ${player.position} slot`);
+    } else if (share <= 0.1) {
+      reasons.push(`You can't start a second ${player.position} - bench insurance only`);
     } else if (bonus <= -25) {
-      reasons.push(`Already deep at ${player.position} - bench depth only`);
+      reasons.push(`Already deep at ${player.position} - flex/bench depth`);
     }
 
     return { player, vbd, survivalProbability: survival, score, reasons };
