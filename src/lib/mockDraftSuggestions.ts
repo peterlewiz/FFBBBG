@@ -17,21 +17,11 @@ export { rosterRequirementsFromDraftSettings };
 // consensus throughout this app. But that's the wrong signal for
 // predicting *when a bot or Sleeper-app-only opponent will actually
 // draft someone* - those picks are driven by Sleeper's own built-in
-// relevance number (search_rank), not real expert analysis. This mock
+// relevance number (search_rank), not real expert analysis. A mock
 // draft's other seats are CPU-filled (cpu_autopick), which lean on
 // exactly that number, so search_rank (cross-position - it's Sleeper's
 // one shared relevance scale, unlike position-scoped expertRank) is
 // the right input for modeling pick timing.
-//
-// Model: rank every undrafted player by search_rank alone - that
-// ordering approximates "the order the room takes players in". A
-// candidate's position in that ordering is treated as the mean of a
-// normal distribution over "how many more picks until they're taken",
-// with a spread that widens further down the board (the consensus top
-// picks are near-unanimous; a rank-80 pick has real variance in who
-// reaches for it and when). Survival probability is just the right
-// tail of that distribution beyond however many picks stand between
-// now and your next turn.
 // ---------------------------------------------------------------------
 
 /** Standard normal CDF via the Abramowitz-Stegun erf approximation
@@ -57,25 +47,37 @@ export function survivalProbability(sleeperOrderRank: number, picksUntilNext: nu
   // definition, on the board right now. The continuous normal model
   // otherwise puts real probability mass below 0 (a "rank" can't
   // actually be negative), which wrongly reads as "maybe already gone"
-  // for exactly the consensus top players this matters most for -
-  // caught by testing this exact case against live data before shipping.
+  // for exactly the consensus top players this matters most for.
   if (picksUntilNext <= 0) return 1;
   const sd = Math.max(2, sleeperOrderRank * 0.4);
-  // P(actual pick position > picksUntilNext) = 1 - CDF(picksUntilNext)
   return 1 - normalCdf(picksUntilNext, sleeperOrderRank, sd);
 }
 
-// ---------------------------------------------------------------------
-// Value-based drafting (RosterRequirements, computeReplacementPoints)
-// now lives in valueBasedRanking.ts, shared with the standing Player
-// Board's own cross-position ranking - see that file for the rationale.
-// ---------------------------------------------------------------------
-
 const FLEX_ELIGIBLE: FantasyPosition[] = ["RB", "WR", "TE"];
 
-// ---------------------------------------------------------------------
-// Positional need
-// ---------------------------------------------------------------------
+// Hard ceiling on how many of a position are worth rostering at all.
+// Without these the engine happily drafted six quarterbacks: past your
+// starters there was only ever one flat "already deep" discount, so a
+// position whose value number stayed high just kept winning every
+// remaining pick. Roster-construction facts, not league settings: a
+// 1-QB league never needs a third QB, nobody starts a third TE, and
+// K/DEF are strictly one-and-done streaming slots.
+const POSITION_LIMIT: Record<FantasyPosition, number> = {
+  QB: 2,
+  RB: 6,
+  WR: 6,
+  TE: 2,
+  K: 1,
+  DEF: 1,
+};
+
+// Players FantasyPros doesn't project at all (deep bench, camp bodies,
+// and every K/DEF since we don't spend quota on those positions). They
+// must rank below anyone with a real projection - including a real but
+// *below-replacement* one. Treating a missing projection as 0 instead
+// ranked unknowns above known-mediocre players, which is how a draft
+// ended up taking Jimmy Garoppolo over quarterbacks with real numbers.
+const NO_PROJECTION_VALUE = -200;
 
 function countByPosition(players: DraftPlayer[]): Record<FantasyPosition, number> {
   const counts: Record<FantasyPosition, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 };
@@ -83,49 +85,73 @@ function countByPosition(players: DraftPlayer[]): Record<FantasyPosition, number
   return counts;
 }
 
-/** >1 = actively needed, 1 = neutral (best-player-available), <1 =
- * already well-stocked at this position. */
-function needMultiplier(
+/** How many FLEX-eligible players you have beyond their own dedicated
+ * starting slots - i.e. how much of the FLEX requirement is covered. */
+function flexSurplus(counts: Record<FantasyPosition, number>, req: RosterRequirements): number {
+  return FLEX_ELIGIBLE.reduce((sum, pos) => sum + Math.max(0, counts[pos] - req[pos]), 0);
+}
+
+/** Starting slots (including FLEX, K and DEF) still unfilled. */
+function emptyStarterSlots(counts: Record<FantasyPosition, number>, req: RosterRequirements): number {
+  let n = 0;
+  for (const pos of ["QB", "RB", "WR", "TE", "K", "DEF"] as FantasyPosition[]) {
+    n += Math.max(0, req[pos as keyof RosterRequirements] as number - counts[pos]);
+  }
+  n += Math.max(0, req.flexSlots - flexSurplus(counts, req));
+  return n;
+}
+
+/** Whether drafting this position would actually close one of those
+ * unfilled starting slots. */
+function fillsRequiredSlot(
   position: FantasyPosition,
-  myCounts: Record<FantasyPosition, number>,
+  counts: Record<FantasyPosition, number>,
+  req: RosterRequirements,
+): boolean {
+  if (counts[position] < (req[position as keyof RosterRequirements] as number)) return true;
+  if (FLEX_ELIGIBLE.includes(position) && flexSurplus(counts, req) < req.flexSlots) return true;
+  return false;
+}
+
+/**
+ * Positional need as an ADDITIVE adjustment in fantasy points, not a
+ * multiplier. This matters: value-over-replacement goes negative for
+ * anyone below their position's replacement level, and multiplying a
+ * negative value by a *larger* "you need this position" factor made
+ * needed players score worse, exactly inverting the intent. Adding
+ * points works correctly in both directions.
+ */
+function needBonus(
+  position: FantasyPosition,
+  counts: Record<FantasyPosition, number>,
   req: RosterRequirements,
   round: number,
   totalRounds: number,
+  slotsLeft: number,
+  picksRemaining: number,
 ): number {
-  // K/DEF: real draft strategy is "stream, don't spend an early pick" -
-  // matches this site's own scarcity ranking, which excludes them for
-  // the same reason. Only worth suggesting in the final couple rounds.
+  // K/DEF: no real weekly skill gap and no expert data - never worth a
+  // pick until the last couple of rounds, then perfectly normal.
   if (position === "K" || position === "DEF") {
-    if (round < totalRounds - 1) return 0.1;
-    return myCounts[position] < req[position] ? 1.3 : 0.6;
+    return round >= totalRounds - 2 ? 0 : -400;
   }
-
-  if (position === "QB") {
-    return myCounts.QB < req.QB ? 1.25 : 0.7;
+  if (counts[position] < (req[position as keyof RosterRequirements] as number)) {
+    // Ramps up as picks run out, so an unfilled starting slot gets
+    // progressively more urgent instead of being left to the last round.
+    const pressure = picksRemaining > 0 ? slotsLeft / picksRemaining : 1;
+    return 30 + 50 * Math.min(1, pressure);
   }
-
-  // RB/WR/TE share FLEX - "need" means either an empty dedicated slot or
-  // an unclaimed flex spot.
-  const dedicated = req[position];
-  const surplusAcrossFlexEligible = FLEX_ELIGIBLE.reduce(
-    (sum, pos) => sum + Math.max(0, myCounts[pos] - req[pos]),
-    0,
-  );
-  const directNeed = myCounts[position] < dedicated;
-  const flexOpen = surplusAcrossFlexEligible < req.flexSlots;
-  if (directNeed) return 1.3;
-  if (flexOpen) return 1.1;
-  return 0.8;
+  if (FLEX_ELIGIBLE.includes(position) && flexSurplus(counts, req) < req.flexSlots) return 12;
+  const extra =
+    counts[position] - (req[position as keyof RosterRequirements] as number) -
+    (FLEX_ELIGIBLE.includes(position) ? req.flexSlots : 0);
+  return extra <= 0 ? -10 : extra === 1 ? -25 : -40;
 }
-
-// ---------------------------------------------------------------------
-// Suggestion engine
-// ---------------------------------------------------------------------
 
 export interface PickSuggestion {
   player: DraftPlayer;
-  /** Points-over-replacement, this player's position vs. their
-   * position's replacement level - cross-position comparable. */
+  /** Points-over-replacement against a stable, full-pool baseline -
+   * cross-position comparable. */
   vbd: number;
   survivalProbability: number;
   score: number;
@@ -141,46 +167,71 @@ export interface SuggestionInput {
   /** Live count of picks between now and your next turn (0 if you're on
    * the clock right now). */
   picksUntilNext: number;
+  /** How many picks you have left in the whole draft, including this
+   * one - drives roster-completion urgency. */
+  picksRemaining: number;
 }
 
 export function computePickSuggestions(input: SuggestionInput, count = 3): PickSuggestion[] {
-  const { players, draftedPlayerIds, myPlayerIds, draftSettings, currentRound, picksUntilNext } = input;
+  const { players, draftedPlayerIds, myPlayerIds, draftSettings, currentRound, picksUntilNext, picksRemaining } =
+    input;
   const req = rosterRequirementsFromDraftSettings(draftSettings);
   const totalRounds = draftSettings?.rounds ?? 14;
 
   const available = players.filter((p) => !draftedPlayerIds.has(p.id));
+
   // Sleeper's own cross-position relevance order among what's actually
-  // still on the board - the timing model's input.
+  // still on the board - the pick-timing model's input.
   const sleeperOrder = [...available].sort((a, b) => a.searchRank - b.searchRank);
   const sleeperOrderRank = new Map<string, number>();
   sleeperOrder.forEach((p, i) => sleeperOrderRank.set(p.id, i + 1));
 
-  const replacementPoints = computeReplacementPoints(available, req);
+  // Replacement level comes from the FULL player pool, computed once -
+  // never the shrinking available pool. Deriving it from what's left
+  // was a real bug: FantasyPros only projects ~30 real QBs, so once
+  // fewer than 12 projected QBs remained undrafted the baseline
+  // collapsed onto the *worst* remaining one (~11 pts instead of
+  // ~301), inflating every leftover QB's value by ~290 points and
+  // making the engine spend its late rounds hoarding backup QBs.
+  const replacementPoints = computeReplacementPoints(players, req);
   const myCounts = countByPosition(players.filter((p) => myPlayerIds.has(p.id)));
+  const slotsLeft = emptyStarterSlots(myCounts, req);
 
-  // Only recommend players real expert analysis actually covers -
-  // expert data is the ground truth for quality throughout this page,
-  // so a pure Sleeper-popularity guess with no expert backing isn't a
-  // "suggestion", it's a shrug.
-  const candidates = available.filter(
-    (p) =>
-      p.expertRank !== null &&
-      (p.position === "QB" || p.position === "RB" || p.position === "WR" || p.position === "TE" || p.position === "K" || p.position === "DEF"),
-  );
+  let candidates = available.filter((p) => {
+    // Expert data is the quality gate - but K/DEF are exempt, since we
+    // deliberately never spend FantasyPros quota on them. Requiring an
+    // expert rank made them permanently unsuggestable, so a full mock
+    // draft finished with no kicker and no defense at all.
+    if (p.position !== "K" && p.position !== "DEF" && p.expertRank === null) return false;
+    return myCounts[p.position] < POSITION_LIMIT[p.position];
+  });
+
+  // When picks left can only just cover the starting slots left, stop
+  // suggesting luxury depth and only offer players who actually
+  // complete the lineup.
+  if (picksRemaining <= slotsLeft) {
+    candidates = candidates.filter((p) => fillsRequiredSlot(p.position, myCounts, req));
+  }
 
   const scored: PickSuggestion[] = candidates.map((player) => {
-    const vbd = (player.projectedPoints ?? 0) - replacementPoints[player.position];
+    const vbd =
+      player.projectedPoints !== null
+        ? player.projectedPoints - replacementPoints[player.position]
+        : NO_PROJECTION_VALUE;
     const order = sleeperOrderRank.get(player.id) ?? sleeperOrder.length;
     const survival = survivalProbability(order, picksUntilNext);
-    const need = needMultiplier(player.position, myCounts, req, currentRound, totalRounds);
-    // Urgency: a player almost certain to be gone by your next pick is
-    // worth reaching for now; one who'll obviously survive can be
-    // deferred in favor of someone more urgently needed this instant.
-    const urgency = 0.7 + 0.6 * (1 - survival);
-    const score = vbd * need * urgency;
+    const bonus = needBonus(player.position, myCounts, req, currentRound, totalRounds, slotsLeft, picksRemaining);
+    // Small additive nudge toward players unlikely to last until your
+    // next turn, rather than a multiplier that could swamp real value.
+    const score = vbd + bonus + 15 * (1 - survival);
 
     const reasons: string[] = [];
     reasons.push(`${player.posRank ?? player.position} by expert consensus`);
+    if (player.projectedPoints !== null) {
+      reasons.push(
+        `${vbd >= 0 ? "+" : ""}${vbd.toFixed(0)} pts vs a replacement ${player.position}`,
+      );
+    }
     if (player.marketGap !== null && player.marketGap >= 15) {
       reasons.push(`Sleeper's own ranking has them ${player.marketGap} spots lower than experts - the room is sleeping on them`);
     } else if (player.marketGap !== null && player.marketGap <= -15) {
@@ -189,27 +240,34 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     if (picksUntilNext > 0) {
       reasons.push(
         survival < 0.35
-          ? `Only ~${Math.round(survival * 100)}% likely to survive to your next pick (#${picksUntilNext} picks away) - grab them now`
+          ? `Only ~${Math.round(survival * 100)}% likely to survive your next ${picksUntilNext} picks - grab them now`
           : survival > 0.75
-            ? `~${Math.round(survival * 100)}% likely to still be there next turn - safe to wait if you need someone else more`
+            ? `~${Math.round(survival * 100)}% likely to still be there next turn - safe to wait`
             : `~${Math.round(survival * 100)}% likely to survive to your next pick`,
       );
     }
-    if (need >= 1.25) reasons.push(`Fills an open starting need at ${player.position}`);
-    else if (need <= 0.8 && player.position !== "K" && player.position !== "DEF") {
-      reasons.push(`Already deep at ${player.position} - would be pure bench/flex depth`);
+    if (myCounts[player.position] < (req[player.position as keyof RosterRequirements] as number)) {
+      reasons.push(`Fills an open starting ${player.position} slot`);
+    } else if (bonus <= -25) {
+      reasons.push(`Already deep at ${player.position} - bench depth only`);
     }
 
     return { player, vbd, survivalProbability: survival, score, reasons };
   });
 
-  return scored.sort((a, b) => b.score - a.score).slice(0, count);
+  return scored
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (a.player.expertRank ?? 9999) - (b.player.expertRank ?? 9999) ||
+        a.player.searchRank - b.player.searchRank,
+    )
+    .slice(0, count);
 }
 
 /** Given the current number of picks already made, how many other
  * teams pick before this drafter's next turn (0 if it's currently their
- * turn or they're on the clock next). Mirrors picksUntilNext's static
- * math but against the live pick count instead of a fixed round. */
+ * turn or they're on the clock next). */
 export function livePicksUntilNext(myOverallPicks: number[], picksMadeSoFar: number): number {
   const nextOverall = picksMadeSoFar + 1;
   const nextOfMine = myOverallPicks.find((overall) => overall >= nextOverall);

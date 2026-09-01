@@ -217,6 +217,9 @@ export function DraftAssistant() {
     const onTheClockSlot = slotForOverallPick(nextOverall, teams);
     const currentRound = Math.ceil(nextOverall / teams);
     const picksUntilMyNext = livePicksUntilNext(myOverallPicks, mockPicks.length);
+    // Picks you have left in the whole draft (this one included) - drives
+    // how hard the engine pushes to finish an incomplete starting lineup.
+    const picksRemaining = myOverallPicks.filter((o) => o >= nextOverall).length;
     const myDraftedPlayers = players.filter((p) => myPlayerIds.has(p.id));
 
     let suggestions: PickSuggestion[] = [];
@@ -228,6 +231,7 @@ export function DraftAssistant() {
         draftSettings: mockDraft.settings,
         currentRound,
         picksUntilNext: picksUntilMyNext,
+        picksRemaining,
       });
     }
 
