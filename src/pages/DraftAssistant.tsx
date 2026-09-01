@@ -310,30 +310,10 @@ export function DraftAssistant() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs text-amber-300">
-        Private draft-prep page for plewiz. Not linked anywhere on the site - bookmark the URL.
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Draft Assistant</h1>
-        <p className="mt-1 text-sm text-muted">
-          {league.name} · {league.season} · picking from slot{" "}
-          {draft?.draft_order?.[PLEWIZ_USER_ID] ?? "?"} of {league.settings?.num_teams ?? "?"}
-          {draft?.status && draft.status !== "pre_draft" && (
-            <span className="ml-2 rounded-full bg-neon/10 px-2 py-0.5 text-xs font-semibold text-neon">
-              Draft {draft.status}
-            </span>
-          )}
-        </p>
-      </div>
-
-      {draft?.status === "pre_draft" && (
-        <Countdown target={resolveDraftDate(draft.start_time)} label="Draft Day" />
-      )}
-
-      {/* Player board - kept at the top since it's what actually gets used
-       * throughout a live draft (click to mark drafted/mine), not
-       * something you read once and scroll past. */}
+      {/* Player board - the very first thing on the page, above even the
+       * title/countdown, since it's what actually gets used throughout a
+       * live draft (click to mark drafted/mine), not something you read
+       * once and scroll past. */}
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">Player Board</h2>
@@ -402,6 +382,27 @@ export function DraftAssistant() {
           </ul>
         )}
       </div>
+
+      <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs text-amber-300">
+        Private draft-prep page for plewiz. Not linked anywhere on the site - bookmark the URL.
+      </div>
+
+      <div>
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Draft Assistant</h1>
+        <p className="mt-1 text-sm text-muted">
+          {league.name} · {league.season} · picking from slot{" "}
+          {draft?.draft_order?.[PLEWIZ_USER_ID] ?? "?"} of {league.settings?.num_teams ?? "?"}
+          {draft?.status && draft.status !== "pre_draft" && (
+            <span className="ml-2 rounded-full bg-neon/10 px-2 py-0.5 text-xs font-semibold text-neon">
+              Draft {draft.status}
+            </span>
+          )}
+        </p>
+      </div>
+
+      {draft?.status === "pre_draft" && (
+        <Countdown target={resolveDraftDate(draft.start_time)} label="Draft Day" />
+      )}
 
       {/* Your draft slots */}
       {myDraftSlots.length > 0 && (
