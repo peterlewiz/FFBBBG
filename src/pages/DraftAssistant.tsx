@@ -494,14 +494,22 @@ export function DraftAssistant() {
               <div className="flex flex-wrap items-center gap-3">
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-                    mockDraft.status === "drafting"
+                    mockDraft.status === "drafting" || (mockDraft.status === "paused" && mockDraftInfo.isMyTurn)
                       ? "bg-emerald-500/20 text-emerald-400"
                       : mockDraft.status === "complete"
                         ? "bg-line text-muted"
                         : "bg-amber-500/20 text-amber-400"
                   }`}
                 >
-                  {mockDraft.status.replace("_", " ")}
+                  {/* Sleeper mock drafts vs. bots auto-pick every CPU seat
+                   * instantly and "paused" is the normal resting state
+                   * while it's waiting on you specifically - it isn't an
+                   * error or a stalled draft, so it shouldn't read as one. */}
+                  {mockDraft.status === "paused"
+                    ? mockDraftInfo.isMyTurn
+                      ? "waiting on you"
+                      : "paused"
+                    : mockDraft.status.replace(/_/g, " ")}
                 </span>
                 {!mockDraftInfo.done && (
                   <span className="text-sm text-body">
