@@ -30,7 +30,7 @@ const CAP_PER_POSITION: Record<FantasyPosition, number> = {
 // unmatched players (see mergeExpertRankings/expertRank): `undefined`
 // isn't `null`, so a strict `!== null` check treated a merely-absent
 // field as "has a real expert rank", which the sort could put anywhere.
-const CACHE_KEY = "players:fantasy-relevant:v3";
+const CACHE_KEY = "players:fantasy-relevant:v4";
 // Sleeper asks that this endpoint only be hit about once a day.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -44,6 +44,17 @@ export interface DraftPlayer {
    * sort key only when there's no FantasyPros expert rank for this
    * player (K/DEF always, or anyone the name-match missed). */
   searchRank: number;
+  /**
+   * This player's rank within their own position when Sleeper's pool is
+   * sorted by searchRank alone (1 = the position's Sleeper darling).
+   * Distinct from expertRank: this is "what an opponent relying on
+   * Sleeper's own default rankings sees," not a quality signal in its own
+   * right. Only useful in comparison to expertRank (see marketGap) - the
+   * whole point of tracking it is that other drafters in a Sleeper mock
+   * or live draft who don't have real expert data will draft off *this*
+   * number instead.
+   */
+  sleeperPositionRank: number;
   age: number | null;
   yearsExp: number | null;
   status: string | null;
@@ -77,6 +88,23 @@ export interface DraftPlayer {
    * is missing, which is common outside a position's top ~50-100 or so.
    */
   valueGap: number | null;
+  /**
+   * sleeperPositionRank minus expertRank, when expertRank is within this
+   * position's relevance cutoff. This is the "edge over the room" signal,
+   * separate from valueGap: valueGap compares FantasyPros against itself
+   * (projection vs. its own consensus) to judge a player's real quality.
+   * marketGap compares Sleeper's own popularity-based ranking against
+   * real expert consensus, to find where *other drafters* (who are
+   * likely going off Sleeper's own rankings, not paid expert data) are
+   * probably wrong. Positive = Sleeper's default ranks them worse than
+   * real experts do, so the field will likely pass on them longer than
+   * they should - a name to target late for value the room doesn't see
+   * coming. Negative = Sleeper's own popularity has them ranked better
+   * than real experts do, so the field will likely reach for them early -
+   * a name to either avoid overpaying for or to grab a round ahead of
+   * where the "real" analysis says you'd need to.
+   */
+  marketGap: number | null;
 }
 
 function isFantasyPosition(p: string | null): p is FantasyPosition {
@@ -106,6 +134,7 @@ function trimAndCap(raw: Record<string, SleeperPlayer>): DraftPlayer[] {
       position: p.position,
       team: p.team,
       searchRank: p.search_rank ?? 9999999,
+      sleeperPositionRank: 0, // assigned below, after sorting
       age: p.age ?? null,
       yearsExp: p.years_exp ?? null,
       status: p.status ?? null,
@@ -117,12 +146,17 @@ function trimAndCap(raw: Record<string, SleeperPlayer>): DraftPlayer[] {
       projectedPoints: null,
       projectedRank: null,
       valueGap: null,
+      marketGap: null,
     });
   }
 
   const out: DraftPlayer[] = [];
   for (const pos of FANTASY_POSITIONS) {
     byPosition[pos].sort((a, b) => a.searchRank - b.searchRank);
+    // Assign before capping so the ordinal reflects this player's real
+    // standing in Sleeper's full pool for the position, not just their
+    // position among survivors of our own storage-size trim.
+    byPosition[pos].forEach((player, i) => (player.sleeperPositionRank = i + 1));
     out.push(...byPosition[pos].slice(0, CAP_PER_POSITION[pos]));
   }
   return out;
@@ -142,9 +176,9 @@ export async function loadDraftPlayerPool(): Promise<DraftPlayer[]> {
   return trimmed;
 }
 
-// How deep each position stays fantasy-relevant, for the value-gap
-// calculation only (expertRank/posRank/projectedPoints display for
-// every real match regardless). Verified live: without this, the
+// How deep each position stays fantasy-relevant, for the value-gap and
+// market-gap calculations only (expertRank/posRank/projectedPoints
+// display for every real match regardless). Verified live: without this, the
 // "biggest gaps" were almost all fullbacks and 4th-string depth (a
 // player ranked RB150 by consensus but with *some* baseline projected
 // points reads as a huge "sleeper" gap that's actually just noise from
@@ -187,6 +221,14 @@ export function mergeExpertRankings(players: DraftPlayer[], fp: FantasyProsData)
       match.projectedRank <= cutoff;
     const valueGap = bothRelevant ? match.rankEcr! - match.projectedRank! : null;
 
+    // marketGap only requires expertRank itself to be within relevance
+    // range - sleeperPositionRank is deliberately *not* cutoff-filtered,
+    // since a player real experts rate startable but Sleeper's own
+    // ranking buries deep is exactly the edge case this is meant to
+    // surface (that gap being large is the point, not noise to exclude).
+    const expertRelevant = match.rankEcr !== null && cutoff !== undefined && match.rankEcr <= cutoff;
+    const marketGap = expertRelevant ? player.sleeperPositionRank - match.rankEcr! : null;
+
     return {
       ...player,
       expertRank: match.rankEcr,
@@ -196,6 +238,7 @@ export function mergeExpertRankings(players: DraftPlayer[], fp: FantasyProsData)
       projectedPoints: match.projectedPoints,
       projectedRank: match.projectedRank,
       valueGap,
+      marketGap,
     };
   });
 }

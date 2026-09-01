@@ -136,6 +136,28 @@ export function DraftAssistant() {
     const fades = [...withGap].sort((a, b) => a.valueGap! - b.valueGap!).slice(0, 10);
     return { sleepers, fades };
   }, [players]);
+  // The "edge over the room" signal, separate from the value-gap above.
+  // valueGap compares FantasyPros against itself; this compares Sleeper's
+  // own popularity-based ranking against real expert consensus - the
+  // ranking other drafters relying on Sleeper's built-in board (not paid
+  // expert data) will actually be working off of. Expert consensus is
+  // treated as the ground truth throughout this page; this section exists
+  // specifically to flag where *that ground truth* diverges from what the
+  // rest of the room is likely to see.
+  const marketEdges = useMemo(() => {
+    const withGap = players.filter(
+      (p) => p.marketGap !== null && (p.position === "QB" || p.position === "RB" || p.position === "WR" || p.position === "TE"),
+    );
+    // Positive: Sleeper's default ranks them worse than real experts do -
+    // the field passes on them longer than they should, so they're likely
+    // to fall to you at a discount.
+    const willFall = [...withGap].sort((a, b) => b.marketGap! - a.marketGap!).slice(0, 10);
+    // Negative: Sleeper's own popularity has them ranked better than real
+    // experts do - the field reaches for them early, so expect them gone
+    // sooner than expert analysis alone would suggest.
+    const willGoEarly = [...withGap].sort((a, b) => a.marketGap! - b.marketGap!).slice(0, 10);
+    return { willFall, willGoEarly };
+  }, [players]);
 
   const playoffLine = useMemo(() => (history ? computeHistoricalPlayoffLine(history) : []), [history]);
   const powerRankings = useMemo(() => (history ? computeAllTimePowerRankings(history) : []), [history]);
@@ -285,6 +307,62 @@ export function DraftAssistant() {
                   </span>
                   <span className="w-10 shrink-0 text-right text-sm font-bold text-red-400">
                     {p.valueGap}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Draft room edge: expert consensus (ground truth) vs. Sleeper's
+       * own popularity-based ranking, which is what opponents relying on
+       * Sleeper's built-in board (not paid expert data) will actually be
+       * drafting off of. Distinct from Sleepers & Fades above, which
+       * compares FantasyPros against itself. */}
+      {(marketEdges.willFall.length > 0 || marketEdges.willGoEarly.length > 0) && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-2xl border border-sky-500/30 bg-surface">
+            <div className="border-b border-line px-5 py-4">
+              <h2 className="text-lg font-semibold text-sky-400">🎯 Will Fall To You</h2>
+              <p className="text-xs text-muted">
+                Sleeper's own ranking has these lower than real experts do - the room will likely
+                pass on them longer than it should
+              </p>
+            </div>
+            <ul className="divide-y divide-line">
+              {marketEdges.willFall.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                  <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">{p.position}</span>
+                  <span className="flex-1 truncate font-medium text-primary">{p.name}</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    experts {p.posRank} · sleeper {p.position}#{p.sleeperPositionRank}
+                  </span>
+                  <span className="w-10 shrink-0 text-right text-sm font-bold text-sky-400">
+                    +{p.marketGap}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-orange-500/30 bg-surface">
+            <div className="border-b border-line px-5 py-4">
+              <h2 className="text-lg font-semibold text-orange-400">🏃 Will Go Early</h2>
+              <p className="text-xs text-muted">
+                Sleeper's own popularity has these higher than real experts do - expect the room to
+                reach for them sooner than the numbers justify
+              </p>
+            </div>
+            <ul className="divide-y divide-line">
+              {marketEdges.willGoEarly.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                  <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">{p.position}</span>
+                  <span className="flex-1 truncate font-medium text-primary">{p.name}</span>
+                  <span className="shrink-0 text-xs text-muted">
+                    experts {p.posRank} · sleeper {p.position}#{p.sleeperPositionRank}
+                  </span>
+                  <span className="w-10 shrink-0 text-right text-sm font-bold text-orange-400">
+                    {p.marketGap}
                   </span>
                 </li>
               ))}
@@ -525,6 +603,18 @@ function PlayerRow({
             }
           >
             {player.valueGap > 0 ? "🔥" : "⚠️"}
+          </span>
+        )}
+        {player.marketGap !== null && Math.abs(player.marketGap) >= 15 && (
+          <span
+            className="shrink-0 text-sm"
+            title={
+              player.marketGap > 0
+                ? `Sleeper's own ranking has them ${player.marketGap} spots worse than real experts - likely to fall further than it should`
+                : `Sleeper's own ranking has them ${Math.abs(player.marketGap)} spots better than real experts - the room will likely reach early`
+            }
+          >
+            {player.marketGap > 0 ? "🎯" : "🏃"}
           </span>
         )}
         {player.byeWeek != null && (
