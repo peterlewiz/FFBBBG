@@ -310,10 +310,143 @@ export function DraftAssistant() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Player board - the very first thing on the page, above even the
-       * title/countdown, since it's what actually gets used throughout a
-       * live draft (click to mark drafted/mine), not something you read
-       * once and scroll past. */}
+      {/* Live mock draft: separate draft_id, polled every ~4s. Suggestion
+       * engine blends cross-position value-over-replacement, positional
+       * need against this draft's own roster settings, and a survival
+       * probability modeled off Sleeper's own search_rank ordering (what
+       * the CPU-filled room is actually drafting off of), against how
+       * many picks stand between now and your next turn. Kept first on
+       * the page - it's the thing to check first on every single pick. */}
+      <div className="overflow-hidden rounded-2xl border border-fuchsia-500/30 bg-surface">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-fuchsia-400">🔴 Live Mock Draft</h2>
+          <p className="text-xs text-muted">Paste a Sleeper mock draft URL or ID to get live pick suggestions</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
+          <input
+            value={mockDraftInput}
+            onChange={(e) => setMockDraftInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && loadMockDraft(mockDraftInput)}
+            placeholder="sleeper.com/draft/nfl/…"
+            className="min-w-64 flex-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
+          />
+          <button
+            onClick={() => loadMockDraft(mockDraftInput)}
+            className="rounded-lg bg-fuchsia-500/20 px-3 py-1.5 text-xs font-semibold text-fuchsia-300 hover:bg-fuchsia-500/30"
+          >
+            Load
+          </button>
+        </div>
+        <div className="p-5">
+          {!mockDraftId ? (
+            <p className="text-sm text-muted">Paste a mock draft URL or ID above to connect.</p>
+          ) : mockLoading && !mockDraft ? (
+            <p className="text-sm text-muted">Connecting to draft {mockDraftId}…</p>
+          ) : mockError ? (
+            <p className="text-sm text-red-400">{mockError}</p>
+          ) : !mockDraft || !mockDraftInfo ? (
+            <p className="text-sm text-amber-400">
+              Connected, but couldn't find your pick slot in this draft's draft_order - make sure you've
+              joined it (not just spectating) with this Sleeper account.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
+                    mockDraft.status === "drafting" || (mockDraft.status === "paused" && mockDraftInfo.isMyTurn)
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : mockDraft.status === "complete"
+                        ? "bg-line text-muted"
+                        : "bg-amber-500/20 text-amber-400"
+                  }`}
+                >
+                  {/* Sleeper mock drafts vs. bots auto-pick every CPU seat
+                   * instantly and "paused" is the normal resting state
+                   * while it's waiting on you specifically - it isn't an
+                   * error or a stalled draft, so it shouldn't read as one. */}
+                  {mockDraft.status === "paused"
+                    ? mockDraftInfo.isMyTurn
+                      ? "waiting on you"
+                      : "paused"
+                    : mockDraft.status.replace(/_/g, " ")}
+                </span>
+                {!mockDraftInfo.done && (
+                  <span className="text-sm text-body">
+                    Round {mockDraftInfo.currentRound}/{mockDraftInfo.rounds} · Slot{" "}
+                    {mockDraftInfo.onTheClockSlot} on the clock
+                  </span>
+                )}
+                {mockDraftInfo.isMyTurn && (
+                  <span className="animate-pulse rounded-full bg-neon px-3 py-1 text-xs font-bold text-ink">
+                    YOUR TURN
+                  </span>
+                )}
+                {!mockDraftInfo.done && !mockDraftInfo.isMyTurn && (
+                  <span className="text-xs text-muted">
+                    {mockDraftInfo.picksUntilMyNext} pick{mockDraftInfo.picksUntilMyNext === 1 ? "" : "s"} until
+                    your turn
+                  </span>
+                )}
+              </div>
+
+              {mockDraftInfo.done ? (
+                <p className="text-sm text-muted">Draft complete.</p>
+              ) : (
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
+                    Suggestions for your pick
+                  </p>
+                  {mockDraftInfo.suggestions.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      {playersLoading ? "Loading player pool…" : "No candidates - waiting on player/expert data."}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {mockDraftInfo.suggestions.map((s, i) => (
+                        <div key={s.player.id} className="rounded-xl border border-line bg-surface-2 p-3">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-fuchsia-500/20 text-[10px] font-bold text-fuchsia-300">
+                              {i + 1}
+                            </span>
+                            <span className="font-semibold text-primary">{s.player.name}</span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted">
+                            {s.player.position} · {s.player.posRank} · {s.player.team ?? "FA"}
+                          </p>
+                          <ul className="mt-2 space-y-1 text-xs text-body">
+                            {s.reasons.map((r, ri) => (
+                              <li key={ri}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {mockDraftInfo.myDraftedPlayers.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">Your roster so far</p>
+                  <div className="flex flex-wrap gap-2">
+                    {mockDraftInfo.myDraftedPlayers.map((p) => (
+                      <span
+                        key={p.id}
+                        className="rounded-full border border-line bg-surface-2 px-3 py-1 text-xs text-body"
+                      >
+                        {p.position} {p.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Player board */}
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">Player Board</h2>
@@ -523,141 +656,6 @@ export function DraftAssistant() {
           </div>
         </div>
       )}
-
-      {/* Live mock draft: separate draft_id, polled every ~4s. Suggestion
-       * engine blends cross-position value-over-replacement, positional
-       * need against this draft's own roster settings, and a survival
-       * probability modeled off Sleeper's own search_rank ordering (what
-       * the CPU-filled room is actually drafting off of), against how
-       * many picks stand between now and your next turn. */}
-      <div className="overflow-hidden rounded-2xl border border-fuchsia-500/30 bg-surface">
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="text-lg font-semibold text-fuchsia-400">🔴 Live Mock Draft</h2>
-          <p className="text-xs text-muted">Paste a Sleeper mock draft URL or ID to get live pick suggestions</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
-          <input
-            value={mockDraftInput}
-            onChange={(e) => setMockDraftInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && loadMockDraft(mockDraftInput)}
-            placeholder="sleeper.com/draft/nfl/…"
-            className="min-w-64 flex-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
-          />
-          <button
-            onClick={() => loadMockDraft(mockDraftInput)}
-            className="rounded-lg bg-fuchsia-500/20 px-3 py-1.5 text-xs font-semibold text-fuchsia-300 hover:bg-fuchsia-500/30"
-          >
-            Load
-          </button>
-        </div>
-        <div className="p-5">
-          {!mockDraftId ? (
-            <p className="text-sm text-muted">Paste a mock draft URL or ID above to connect.</p>
-          ) : mockLoading && !mockDraft ? (
-            <p className="text-sm text-muted">Connecting to draft {mockDraftId}…</p>
-          ) : mockError ? (
-            <p className="text-sm text-red-400">{mockError}</p>
-          ) : !mockDraft || !mockDraftInfo ? (
-            <p className="text-sm text-amber-400">
-              Connected, but couldn't find your pick slot in this draft's draft_order - make sure you've
-              joined it (not just spectating) with this Sleeper account.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-                    mockDraft.status === "drafting" || (mockDraft.status === "paused" && mockDraftInfo.isMyTurn)
-                      ? "bg-emerald-500/20 text-emerald-400"
-                      : mockDraft.status === "complete"
-                        ? "bg-line text-muted"
-                        : "bg-amber-500/20 text-amber-400"
-                  }`}
-                >
-                  {/* Sleeper mock drafts vs. bots auto-pick every CPU seat
-                   * instantly and "paused" is the normal resting state
-                   * while it's waiting on you specifically - it isn't an
-                   * error or a stalled draft, so it shouldn't read as one. */}
-                  {mockDraft.status === "paused"
-                    ? mockDraftInfo.isMyTurn
-                      ? "waiting on you"
-                      : "paused"
-                    : mockDraft.status.replace(/_/g, " ")}
-                </span>
-                {!mockDraftInfo.done && (
-                  <span className="text-sm text-body">
-                    Round {mockDraftInfo.currentRound}/{mockDraftInfo.rounds} · Slot{" "}
-                    {mockDraftInfo.onTheClockSlot} on the clock
-                  </span>
-                )}
-                {mockDraftInfo.isMyTurn && (
-                  <span className="animate-pulse rounded-full bg-neon px-3 py-1 text-xs font-bold text-ink">
-                    YOUR TURN
-                  </span>
-                )}
-                {!mockDraftInfo.done && !mockDraftInfo.isMyTurn && (
-                  <span className="text-xs text-muted">
-                    {mockDraftInfo.picksUntilMyNext} pick{mockDraftInfo.picksUntilMyNext === 1 ? "" : "s"} until
-                    your turn
-                  </span>
-                )}
-              </div>
-
-              {mockDraftInfo.done ? (
-                <p className="text-sm text-muted">Draft complete.</p>
-              ) : (
-                <div>
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-                    Suggestions for your pick
-                  </p>
-                  {mockDraftInfo.suggestions.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      {playersLoading ? "Loading player pool…" : "No candidates - waiting on player/expert data."}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {mockDraftInfo.suggestions.map((s, i) => (
-                        <div key={s.player.id} className="rounded-xl border border-line bg-surface-2 p-3">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-fuchsia-500/20 text-[10px] font-bold text-fuchsia-300">
-                              {i + 1}
-                            </span>
-                            <span className="font-semibold text-primary">{s.player.name}</span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted">
-                            {s.player.position} · {s.player.posRank} · {s.player.team ?? "FA"}
-                          </p>
-                          <ul className="mt-2 space-y-1 text-xs text-body">
-                            {s.reasons.map((r, ri) => (
-                              <li key={ri}>{r}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {mockDraftInfo.myDraftedPlayers.length > 0 && (
-                <div>
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">Your roster so far</p>
-                  <div className="flex flex-wrap gap-2">
-                    {mockDraftInfo.myDraftedPlayers.map((p) => (
-                      <span
-                        key={p.id}
-                        className="rounded-full border border-line bg-surface-2 px-3 py-1 text-xs text-body"
-                      >
-                        {p.position} {p.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Sleepers & fades: FantasyPros' own projected points, ranked
        * within position, compared against their own expert consensus
