@@ -32,6 +32,20 @@ const BOARD_STORAGE_KEY = "draft-assistant:board:v1";
 // pasting any other draft ID into the box still overrides and persists.
 const MOCK_DRAFT_STORAGE_KEY = "draft-assistant:mock-draft-id:v2";
 const DEFAULT_MOCK_DRAFT_ID = "1400534735561756672";
+// Top 3 get the podium treatment; 4-10 are the fallback list behind them.
+const SUGGESTION_COUNT = 10;
+const PODIUM = [
+  {
+    medal: "🥇",
+    // Center column on the podium, and the only card that's raised.
+    wrap: "sm:order-2 sm:-mt-4",
+    card: "border-amber-400/70 bg-amber-400/10 shadow-lg shadow-amber-400/20",
+    chip: "bg-amber-400 text-ink",
+    name: "text-lg",
+  },
+  { medal: "🥈", wrap: "sm:order-1", card: "border-slate-300/50 bg-slate-300/5", chip: "bg-slate-300 text-ink", name: "text-base" },
+  { medal: "🥉", wrap: "sm:order-3", card: "border-orange-600/60 bg-orange-600/10", chip: "bg-orange-600 text-white", name: "text-base" },
+];
 
 type BoardMark = "mine" | "gone";
 
@@ -259,7 +273,7 @@ export function DraftAssistant() {
         currentRound,
         picksUntilNext: picksUntilMyNext,
         picksRemaining,
-      });
+      }, SUGGESTION_COUNT);
     }
 
     return {
@@ -434,26 +448,65 @@ export function DraftAssistant() {
                       {playersLoading ? "Loading player pool…" : "No candidates - waiting on player/expert data."}
                     </p>
                   ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {mockDraftInfo.suggestions.map((s, i) => (
-                        <div key={s.player.id} className="rounded-xl border border-line bg-surface-2 p-3">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-fuchsia-500/20 text-[10px] font-bold text-fuchsia-300">
-                              {i + 1}
-                            </span>
-                            <span className="font-semibold text-primary">{s.player.name}</span>
+                    <>
+                      {/* Podium: #2 left, #1 raised in the centre, #3 right on
+                        * wide screens; plain 1-2-3 order when stacked. */}
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-start">
+                        {mockDraftInfo.suggestions.slice(0, 3).map((s, i) => (
+                          <div key={s.player.id} className={PODIUM[i].wrap}>
+                            <div className={`h-full rounded-xl border-2 p-3 ${PODIUM[i].card}`}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xl leading-none">{PODIUM[i].medal}</span>
+                                <span
+                                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${PODIUM[i].chip}`}
+                                >
+                                  {i + 1}
+                                </span>
+                                <span className={`font-bold text-primary ${PODIUM[i].name}`}>{s.player.name}</span>
+                              </div>
+                              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                                {s.player.position} · {s.player.posRank} · {s.player.team ?? "FA"}
+                              </p>
+                              <ul className="mt-2 space-y-1 text-xs text-body">
+                                {s.reasons.map((r, ri) => (
+                                  <li key={ri}>{r}</li>
+                                ))}
+                              </ul>
+                            </div>
                           </div>
-                          <p className="mt-0.5 text-xs text-muted">
-                            {s.player.position} · {s.player.posRank} · {s.player.team ?? "FA"}
+                        ))}
+                      </div>
+
+                      {mockDraftInfo.suggestions.length > 3 && (
+                        <div className="mt-4">
+                          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                            Next best
                           </p>
-                          <ul className="mt-2 space-y-1 text-xs text-body">
-                            {s.reasons.map((r, ri) => (
-                              <li key={ri}>{r}</li>
+                          <ol className="overflow-hidden rounded-xl border border-line">
+                            {mockDraftInfo.suggestions.slice(3).map((s, i) => (
+                              <li
+                                key={s.player.id}
+                                className="flex items-center gap-3 border-b border-line px-3 py-2 text-sm last:border-b-0"
+                              >
+                                <span className="w-5 shrink-0 text-center text-xs font-bold text-muted">
+                                  {i + 4}
+                                </span>
+                                <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">
+                                  {s.player.position}
+                                </span>
+                                <span className="flex-1 truncate font-medium text-primary">{s.player.name}</span>
+                                {s.player.posRank && (
+                                  <span className="shrink-0 text-xs font-semibold text-neon">{s.player.posRank}</span>
+                                )}
+                                <span className="w-10 shrink-0 text-right text-xs text-muted">
+                                  {s.player.team ?? "FA"}
+                                </span>
+                              </li>
                             ))}
-                          </ul>
+                          </ol>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
