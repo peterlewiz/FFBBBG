@@ -58,7 +58,13 @@ function RuleList({ facts }: { facts: { label: string; detail: string }[] }) {
 export function DraftAssistant() {
   const { data: history, loading: historyLoading, error: historyError } = useLeagueHistory();
   const { league, draft, picks, loading: draftLoading, error: draftError } = useDraftLive();
-  const { players, loading: playersLoading, error: playersError } = usePlayerPool();
+  const {
+    players,
+    loading: playersLoading,
+    error: playersError,
+    expertRankingsAvailable,
+    expertRankingsStale,
+  } = usePlayerPool();
 
   const [board, setBoard] = useState<Record<string, BoardMark>>({});
   const [positionFilter, setPositionFilter] = useState<FantasyPosition | "ALL">("ALL");
@@ -125,7 +131,26 @@ export function DraftAssistant() {
       const q = search.trim().toLowerCase();
       list = list.filter((p) => p.name.toLowerCase().includes(q));
     }
-    return list.slice(0, 150);
+    // expertRank (FantasyPros) and searchRank (Sleeper) aren't on the
+    // same scale - expertRank only ever runs 1-10 (the free API tier's
+    // real top 10 per position), while searchRank is a much wider,
+    // unrelated popularity number. Comparing them as raw numbers would
+    // sometimes rank an unverified #11 above a real, expert-confirmed
+    // #10. Group instead: every FantasyPros-verified player first
+    // (sorted by their own real rank), then everyone else by
+    // searchRank - correct regardless of position filter, since within
+    // "ALL" this also means every position's real top 10 surfaces before
+    // any Sleeper-only guess, without needing a cross-position blend
+    // that a top-10-per-position free tier can't actually support.
+    return [...list]
+      .sort((a, b) => {
+        const aHasExpert = a.expertRank !== null;
+        const bHasExpert = b.expertRank !== null;
+        if (aHasExpert !== bHasExpert) return aHasExpert ? -1 : 1;
+        if (aHasExpert && bHasExpert) return a.expertRank! - b.expertRank!;
+        return a.searchRank - b.searchRank;
+      })
+      .slice(0, 150);
   }, [players, positionFilter, search]);
 
   if (historyLoading || draftLoading) return <LoadingScreen label="Loading draft data…" />;
@@ -309,9 +334,18 @@ export function DraftAssistant() {
         <div className="border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">Player Board</h2>
           <p className="text-xs text-muted">
-            Ranked by Sleeper's own relevance ranking (not a projection - no free source for real
-            ones exists). Click a player to mark drafted/mine; live picks override this once the
-            draft starts.
+            {expertRankingsAvailable ? (
+              <>
+                Each position's real top 10 is FantasyPros' half-PPR expert consensus (shown as a
+                highlighted rank, e.g. "RB4"){" "}
+                {expertRankingsStale && <span className="text-amber-400">(showing a cached, slightly stale copy)</span>}
+                - the free API tier caps every request at 10 players, so depth past that (and all
+                of K/DEF) falls back to Sleeper's relevance ranking instead.
+              </>
+            ) : (
+              "Ranked by Sleeper's own relevance ranking (FantasyPros data unavailable right now)."
+            )}{" "}
+            Click a player to mark drafted/mine; live picks override this once the draft starts.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
@@ -395,9 +429,22 @@ function PlayerRow({
         <span className="w-8 shrink-0 text-center text-xs font-bold text-muted">
           {player.position}
         </span>
+        {player.posRank !== null && (
+          <span
+            className="w-10 shrink-0 text-xs font-bold tabular-nums text-neon"
+            title="FantasyPros half-PPR expert consensus rank"
+          >
+            {player.posRank}
+          </span>
+        )}
         <span className={`flex-1 truncate font-medium ${state === "gone" ? "line-through" : "text-primary"}`}>
           {player.name}
         </span>
+        {player.byeWeek !== null && (
+          <span className="w-8 shrink-0 text-center text-[10px] text-muted" title="Bye week">
+            BYE {player.byeWeek}
+          </span>
+        )}
         <span className="w-10 shrink-0 text-xs text-muted">{player.team ?? "FA"}</span>
         {player.injuryStatus && (
           <span className="shrink-0 text-[10px] font-semibold uppercase text-amber-400">

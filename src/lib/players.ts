@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { getAllPlayers } from "../api/sleeper";
 import { cacheGet, cacheSet } from "../api/cache";
 import type { SleeperPlayer } from "../api/types";
+import {
+  fetchFantasyProsRankings,
+  normalizePlayerName,
+  type FantasyProsData,
+  type FantasyProsPlayer,
+} from "./fantasyProsRankings";
 
 const FANTASY_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"] as const;
 export type FantasyPosition = (typeof FANTASY_POSITIONS)[number];
@@ -29,12 +35,30 @@ export interface DraftPlayer {
   position: FantasyPosition;
   team: string | null;
   /** Sleeper's own relevance ranking - lower is more relevant. Not a
-   * projection, just a consensus-ish "who matters" proxy. */
+   * projection, just a consensus-ish "who matters" proxy. Used as the
+   * sort key only when there's no FantasyPros expert rank for this
+   * player (K/DEF always, or anyone the name-match missed). */
   searchRank: number;
   age: number | null;
   yearsExp: number | null;
   status: string | null;
   injuryStatus: string | null;
+  /**
+   * FantasyPros half-PPR expert consensus rank, within this player's own
+   * position (matches `posRank`, e.g. expertRank 4 = posRank "RB4"). The
+   * free API tier hard-caps every position query at its top 10, so this
+   * is only ever set for someone's real top 10 at their position - null
+   * otherwise, including for anyone FantasyPros data wasn't available
+   * for or the name-match missed. There's no cross-position blended
+   * source at this tier, so this number is *not* comparable between
+   * different positions (a QB with expertRank 3 isn't "better than" an
+   * RB with expertRank 5) - it's a within-position sort key only.
+   */
+  expertRank: number | null;
+  /** Human-readable position rank, e.g. "RB4" - same data as expertRank. */
+  posRank: string | null;
+  expertTier: number | null;
+  byeWeek: number | null;
 }
 
 function isFantasyPosition(p: string | null): p is FantasyPosition {
@@ -68,6 +92,10 @@ function trimAndCap(raw: Record<string, SleeperPlayer>): DraftPlayer[] {
       yearsExp: p.years_exp ?? null,
       status: p.status ?? null,
       injuryStatus: p.injury_status ?? null,
+      expertRank: null,
+      posRank: null,
+      expertTier: null,
+      byeWeek: null,
     });
   }
 
@@ -93,10 +121,43 @@ export async function loadDraftPlayerPool(): Promise<DraftPlayer[]> {
   return trimmed;
 }
 
+/**
+ * Folds FantasyPros' half-PPR expert consensus into the Sleeper-derived
+ * pool, matched by normalized name + position (the two APIs use
+ * different player IDs, so name is the only shared key). Each position
+ * (QB/RB/WR/TE) is queried on its own, so this only ever covers each
+ * position's real top 10 - the free API tier's hard cap, confirmed live
+ * ("public_api_limited": true). K/DEF are left on Sleeper's searchRank
+ * untouched: FantasyPros quota isn't worth spending on positions with
+ * this little real weekly skill differentiation.
+ */
+export function mergeExpertRankings(players: DraftPlayer[], fp: FantasyProsData): DraftPlayer[] {
+  if (fp.players.length === 0) return players;
+
+  const byKey = new Map<string, FantasyProsPlayer>();
+  for (const p of fp.players) {
+    byKey.set(`${normalizePlayerName(p.name)}|${p.position}`, p);
+  }
+
+  return players.map((player) => {
+    const match = byKey.get(`${normalizePlayerName(player.name)}|${player.position}`);
+    if (!match) return player;
+    return {
+      ...player,
+      expertRank: match.rankEcr,
+      posRank: match.posRank,
+      expertTier: match.tier,
+      byeWeek: match.byeWeek,
+    };
+  });
+}
+
 export interface PlayerPoolState {
   players: DraftPlayer[];
   loading: boolean;
   error: string | null;
+  expertRankingsAvailable: boolean;
+  expertRankingsStale: boolean;
 }
 
 export function usePlayerPool(): PlayerPoolState {
@@ -104,13 +165,23 @@ export function usePlayerPool(): PlayerPoolState {
     players: [],
     loading: true,
     error: null,
+    expertRankingsAvailable: false,
+    expertRankingsStale: false,
   });
 
   useEffect(() => {
     let cancelled = false;
-    loadDraftPlayerPool()
-      .then((players) => {
-        if (!cancelled) setState({ players, loading: false, error: null });
+
+    Promise.all([loadDraftPlayerPool(), fetchFantasyProsRankings()])
+      .then(([basePlayers, fp]) => {
+        if (cancelled) return;
+        setState({
+          players: mergeExpertRankings(basePlayers, fp),
+          loading: false,
+          error: null,
+          expertRankingsAvailable: fp.players.length > 0,
+          expertRankingsStale: fp.stale,
+        });
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -118,6 +189,8 @@ export function usePlayerPool(): PlayerPoolState {
             players: [],
             loading: false,
             error: err instanceof Error ? err.message : "Failed to load player data",
+            expertRankingsAvailable: false,
+            expertRankingsStale: false,
           });
         }
       });

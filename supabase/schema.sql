@@ -65,3 +65,31 @@ create policy "public insert" on playoff_odds_snapshots
 
 create policy "public update" on playoff_odds_snapshots
   for update using (true) with check (true);
+
+-- Server-side cache for FantasyPros consensus rankings (the draft
+-- assistant's /api/rankings function reads/writes this - never the
+-- browser directly). FantasyPros' free tier is capped at 50 requests a
+-- day, so this cache is what keeps that page's real upstream calls down
+-- to a couple a day regardless of how many times it's opened.
+create table if not exists fantasypros_cache (
+  cache_key text primary key,
+  data jsonb not null,
+  fetched_at timestamptz not null default now()
+);
+
+alter table fantasypros_cache enable row level security;
+
+-- Same public read/write trust model as the rest of this file (see the
+-- comment on `predictions` above) - kept consistent rather than
+-- introducing a service-role key just for this one table. Nothing here
+-- is sensitive; at worst someone could make the cached rankings display
+-- wrong, not spend any FantasyPros quota (that only happens inside the
+-- serverless function, never from the browser).
+create policy "public read" on fantasypros_cache
+  for select using (true);
+
+create policy "public insert" on fantasypros_cache
+  for insert with check (true);
+
+create policy "public update" on fantasypros_cache
+  for update using (true) with check (true);
