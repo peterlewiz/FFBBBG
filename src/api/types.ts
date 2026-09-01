@@ -37,13 +37,33 @@ export interface SleeperLeague {
 export interface SleeperDraft {
   draft_id: string;
   status: string; // "pre_draft" | "drafting" | "complete"
+  type?: string; // "snake" | "linear" | "auction"
+  season?: string;
   /** Scheduled start, epoch milliseconds. Null until the commissioner sets it. */
   start_time: number | null;
   /** user_id -> pick slot (1 = first overall). Set once the commissioner
    * randomizes/sets the order, even before the draft itself happens. */
   draft_order?: Record<string, number> | null;
+  /** pick slot -> roster_id, the mapping SleeperDraftPick.roster_id is
+   * actually in terms of. */
+  slot_to_roster_id?: Record<string, number> | null;
+  metadata?: {
+    name?: string;
+    scoring_type?: string;
+    [key: string]: unknown;
+  };
   settings?: {
     rounds?: number;
+    teams?: number;
+    slots_qb?: number;
+    slots_rb?: number;
+    slots_wr?: number;
+    slots_te?: number;
+    slots_flex?: number;
+    slots_k?: number;
+    slots_def?: number;
+    slots_bn?: number;
+    pick_timer?: number;
     [key: string]: unknown;
   };
 }
