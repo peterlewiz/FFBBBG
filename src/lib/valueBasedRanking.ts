@@ -80,6 +80,17 @@ function replacementRanks(req: RosterRequirements): Record<FantasyPosition, numb
   };
 }
 
+/**
+ * The point estimate every value calculation runs on: projections and
+ * expert consensus blended (see fantasyProsRankings.ts), falling back
+ * to the raw projection when only that exists. Kept in one place so
+ * replacement level and player value can never be measured on
+ * different scales.
+ */
+export function valuePoints(p: Pick<DraftPlayer, "blendedPoints" | "projectedPoints">): number | null {
+  return p.blendedPoints ?? p.projectedPoints;
+}
+
 export function computeReplacementPoints(
   players: DraftPlayer[],
   req: RosterRequirements,
@@ -87,13 +98,13 @@ export function computeReplacementPoints(
   const ranks = replacementRanks(req);
   const byPosition: Record<FantasyPosition, DraftPlayer[]> = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
   for (const p of players) {
-    if (p.projectedPoints !== null) byPosition[p.position].push(p);
+    if (valuePoints(p) !== null) byPosition[p.position].push(p);
   }
   const out = {} as Record<FantasyPosition, number>;
   for (const pos of Object.keys(ranks) as FantasyPosition[]) {
-    const sorted = [...byPosition[pos]].sort((a, b) => (b.projectedPoints ?? 0) - (a.projectedPoints ?? 0));
+    const sorted = [...byPosition[pos]].sort((a, b) => (valuePoints(b) ?? 0) - (valuePoints(a) ?? 0));
     const idx = Math.min(Math.max(ranks[pos] - 1, 0), sorted.length - 1);
-    out[pos] = sorted[idx]?.projectedPoints ?? 0;
+    out[pos] = sorted[idx] ? (valuePoints(sorted[idx]) ?? 0) : 0;
   }
   return out;
 }
@@ -113,7 +124,7 @@ export function rankByVbd(players: DraftPlayer[], req: RosterRequirements): VbdP
   const replacementPoints = computeReplacementPoints(players, req);
   const withVbd: VbdPlayer[] = players.map((p) => ({
     ...p,
-    vbd: p.projectedPoints !== null ? p.projectedPoints - replacementPoints[p.position] : null,
+    vbd: valuePoints(p) !== null ? (valuePoints(p) as number) - replacementPoints[p.position] : null,
   }));
   return withVbd.sort((a, b) => {
     if (a.vbd === null && b.vbd === null) return a.searchRank - b.searchRank;

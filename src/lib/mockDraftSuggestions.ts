@@ -3,6 +3,7 @@ import type { SleeperDraft, SleeperDraftPick } from "../api/types";
 import {
   rosterRequirementsFromDraftSettings,
   computeReplacementPoints,
+  valuePoints,
   type RosterRequirements,
 } from "./valueBasedRanking";
 
@@ -271,10 +272,8 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
   // Two passes: value + survival first, so the second pass can measure
   // the real cost of waiting at each position.
   const enriched = candidates.map((player) => {
-    const vbd =
-      player.projectedPoints !== null
-        ? player.projectedPoints - replacementPoints[player.position]
-        : NO_PROJECTION_VALUE;
+    const pts = valuePoints(player);
+    const vbd = pts !== null ? pts - replacementPoints[player.position] : NO_PROJECTION_VALUE;
     const order = sleeperOrderRank.get(player.id) ?? sleeperOrder.length;
     return { player, vbd, survival: survivalProbability(order, picksUntilNext) };
   });
@@ -304,7 +303,7 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
 
     const reasons: string[] = [];
     reasons.push(`${player.posRank ?? player.position} by expert consensus`);
-    if (player.projectedPoints !== null) {
+    if (valuePoints(player) !== null) {
       reasons.push(`${vbd >= 0 ? "+" : ""}${vbd.toFixed(0)} pts vs a replacement ${player.position}`);
     }
     if (waitCost >= 10) {

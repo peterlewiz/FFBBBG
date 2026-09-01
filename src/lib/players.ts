@@ -30,7 +30,7 @@ const CAP_PER_POSITION: Record<FantasyPosition, number> = {
 // unmatched players (see mergeExpertRankings/expertRank): `undefined`
 // isn't `null`, so a strict `!== null` check treated a merely-absent
 // field as "has a real expert rank", which the sort could put anywhere.
-const CACHE_KEY = "players:fantasy-relevant:v4";
+const CACHE_KEY = "players:fantasy-relevant:v5";
 // Sleeper asks that this endpoint only be hit about once a day.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -78,6 +78,12 @@ export interface DraftPlayer {
    * "what the numbers say" for comparison against expertRank ("what the
    * market/experts say"). */
   projectedRank: number | null;
+  /**
+   * Projected points and expert consensus blended into one figure - the
+   * point estimate all value math (VBD) actually runs on. Null when
+   * FantasyPros covers neither side for this player.
+   */
+  blendedPoints: number | null;
   /**
    * expertRank minus projectedRank, when both exist. Positive = the raw
    * point projection ranks this player better than expert consensus does
@@ -145,6 +151,7 @@ function trimAndCap(raw: Record<string, SleeperPlayer>): DraftPlayer[] {
       byeWeek: null,
       projectedPoints: null,
       projectedRank: null,
+      blendedPoints: null,
       valueGap: null,
       marketGap: null,
     });
@@ -237,6 +244,7 @@ export function mergeExpertRankings(players: DraftPlayer[], fp: FantasyProsData)
       byeWeek: match.byeWeek,
       projectedPoints: match.projectedPoints,
       projectedRank: match.projectedRank,
+      blendedPoints: match.blendedPoints,
       valueGap,
       marketGap,
     };

@@ -13,6 +13,15 @@ export interface FantasyProsPlayer {
   /** This player's rank within their position if sorted purely by
    * projectedPoints - the "what the numbers say" side of a value gap. */
   projectedRank: number | null;
+  /** What this player "should" score according to expert consensus
+   * alone: the projected points of whoever sits at their ECR position
+   * on this position's own scoring curve. Puts a rank and a projection
+   * into the same units so the two can actually be averaged. */
+  ecrImpliedPoints: number | null;
+  /** The point estimate every value calculation uses - projections and
+   * expert consensus blended (see ECR_BLEND_WEIGHT). Falls back to
+   * whichever single signal exists. */
+  blendedPoints: number | null;
 }
 
 export interface FantasyProsData {
@@ -56,6 +65,18 @@ interface RawProjectionsGroup {
 }
 
 const KNOWN_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
+
+// How much weight a player's own point projection carries against the
+// expert consensus rank when the two disagree. 0.5 = an even split.
+//
+// These are two genuinely different FantasyPros products: the
+// projections are a statistical consensus, while ECR aggregates ~100
+// experts' rankings. Scoring purely on projections meant expert
+// consensus had no influence on pick order at all - it only gated who
+// was eligible and broke ties. Blending lets a strong consensus pull
+// against an outlier projection in both directions (Rashee Rice
+// projects WR8 but ranks WR15 by consensus, so he lands ~WR12).
+const ECR_BLEND_WEIGHT = 0.5;
 
 /** Strip punctuation/suffixes so "A.J. Brown" and "AJ Brown Jr." both
  * normalize the same way for matching across data sources. */
@@ -111,6 +132,8 @@ export async function fetchFantasyProsRankings(): Promise<FantasyProsData> {
         byeWeek: null,
         projectedPoints: null,
         projectedRank: null,
+        ecrImpliedPoints: null,
+        blendedPoints: null,
       };
       byKey.set(k, p);
     }
@@ -159,6 +182,26 @@ export async function fetchFantasyProsRankings(): Promise<FantasyProsData> {
   for (const arr of byPosition.values()) {
     arr.sort((a, b) => (b.projectedPoints ?? 0) - (a.projectedPoints ?? 0));
     arr.forEach((p, i) => (p.projectedRank = i + 1));
+  }
+
+  // Translate each player's expert consensus rank into points via their
+  // own position's scoring curve ("experts call you WR9, so score what
+  // the 9th-best projection scores"), then blend with their own
+  // projection. Ranks and points aren't comparable until you do this.
+  for (const [position, arr] of byPosition) {
+    const curve = arr.map((p) => p.projectedPoints ?? 0);
+    if (curve.length === 0) continue;
+    for (const p of byKey.values()) {
+      if (p.position !== position) continue;
+      if (p.rankEcr !== null) {
+        const idx = Math.min(Math.max(p.rankEcr - 1, 0), curve.length - 1);
+        p.ecrImpliedPoints = curve[idx];
+      }
+      p.blendedPoints =
+        p.projectedPoints !== null && p.ecrImpliedPoints !== null
+          ? ECR_BLEND_WEIGHT * p.projectedPoints + (1 - ECR_BLEND_WEIGHT) * p.ecrImpliedPoints
+          : (p.projectedPoints ?? p.ecrImpliedPoints);
+    }
   }
 
   return { players: Array.from(byKey.values()), fetchedAt, stale, fullDepth };
