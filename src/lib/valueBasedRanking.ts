@@ -12,8 +12,6 @@ import type { SleeperDraft, SleeperLeague } from "../api/types";
 // the number itself means the same thing regardless of position.
 // ---------------------------------------------------------------------
 
-const FLEX_ELIGIBLE: FantasyPosition[] = ["RB", "WR", "TE"];
-
 export interface RosterRequirements {
   QB: number;
   RB: number;
@@ -57,16 +55,26 @@ export function rosterRequirementsFromLeague(league: SleeperLeague): RosterRequi
   };
 }
 
+// How FLEX slots actually get used leaguewide in half-PPR. Splitting
+// them evenly across RB/WR/TE was wrong in a way that badly skewed the
+// board: it set TE's baseline at TE16 (a cheap bar, since TE production
+// craters early) which inflated every mid-tier TE's value, while
+// holding WR to WR28 (an expensive bar) which deflated every WR. The
+// engine then wanted a second TE in round 4 ahead of a starting
+// receiver. This league has no TE premium, so in practice a FLEX is an
+// RB or a WR and almost never a tight end.
+const FLEX_USAGE: Record<"RB" | "WR" | "TE", number> = { RB: 0.4, WR: 0.55, TE: 0.05 };
+
 /** Replacement rank per position - the last player leaguewide who's a
- * real starter, including a fair split of FLEX demand across its
- * eligible positions. */
+ * real starter, including FLEX demand weighted by how that slot is
+ * actually filled. */
 function replacementRanks(req: RosterRequirements): Record<FantasyPosition, number> {
-  const flexShare = (req.teams * req.flexSlots) / FLEX_ELIGIBLE.length;
+  const flexTotal = req.teams * req.flexSlots;
   return {
     QB: Math.round(req.teams * req.QB),
-    RB: Math.round(req.teams * req.RB + flexShare),
-    WR: Math.round(req.teams * req.WR + flexShare),
-    TE: Math.round(req.teams * req.TE + flexShare),
+    RB: Math.round(req.teams * req.RB + flexTotal * FLEX_USAGE.RB),
+    WR: Math.round(req.teams * req.WR + flexTotal * FLEX_USAGE.WR),
+    TE: Math.round(req.teams * req.TE + flexTotal * FLEX_USAGE.TE),
     K: Math.round(req.teams * req.K),
     DEF: Math.round(req.teams * req.DEF),
   };

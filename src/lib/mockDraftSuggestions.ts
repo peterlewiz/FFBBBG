@@ -113,6 +113,27 @@ function fillsRequiredSlot(
   return false;
 }
 
+/** A FLEX is realistically an RB or a WR in this league (no TE premium),
+ * so only those two get credit for covering the FLEX slot. Letting a TE
+ * claim it is what put a second tight end ahead of a starting receiver. */
+const FLEX_FILLERS: FantasyPosition[] = ["RB", "WR"];
+
+/** Any starting QB, RB or WR slot still empty. */
+function coreStartersOpen(counts: Record<FantasyPosition, number>, req: RosterRequirements): boolean {
+  return counts.QB < req.QB || counts.RB < req.RB || counts.WR < req.WR;
+}
+
+/** A second TE is never the right pick while a starting QB/RB/WR slot is
+ * still open - taking TE2 in round 4-5 over a real starting receiver is
+ * just a bad draft, regardless of what the value numbers say. */
+function isBlockedSecondTE(
+  position: FantasyPosition,
+  counts: Record<FantasyPosition, number>,
+  req: RosterRequirements,
+): boolean {
+  return position === "TE" && counts.TE >= req.TE && coreStartersOpen(counts, req);
+}
+
 /**
  * Positional need as an ADDITIVE adjustment in fantasy points, not a
  * multiplier. This matters: value-over-replacement goes negative for
@@ -141,10 +162,10 @@ function needBonus(
     const pressure = picksRemaining > 0 ? slotsLeft / picksRemaining : 1;
     return 30 + 50 * Math.min(1, pressure);
   }
-  if (FLEX_ELIGIBLE.includes(position) && flexSurplus(counts, req) < req.flexSlots) return 12;
+  if (FLEX_FILLERS.includes(position) && flexSurplus(counts, req) < req.flexSlots) return 12;
   const extra =
     counts[position] - (req[position as keyof RosterRequirements] as number) -
-    (FLEX_ELIGIBLE.includes(position) ? req.flexSlots : 0);
+    (FLEX_FILLERS.includes(position) ? req.flexSlots : 0);
   return extra <= 0 ? -10 : extra === 1 ? -25 : -40;
 }
 
@@ -203,6 +224,7 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     // expert rank made them permanently unsuggestable, so a full mock
     // draft finished with no kicker and no defense at all.
     if (p.position !== "K" && p.position !== "DEF" && p.expertRank === null) return false;
+    if (isBlockedSecondTE(p.position, myCounts, req)) return false;
     return myCounts[p.position] < POSITION_LIMIT[p.position];
   });
 
@@ -213,23 +235,45 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     candidates = candidates.filter((p) => fillsRequiredSlot(p.position, myCounts, req));
   }
 
-  const scored: PickSuggestion[] = candidates.map((player) => {
+  // Two passes: value + survival first, so the second pass can measure
+  // the real cost of waiting at each position.
+  const enriched = candidates.map((player) => {
     const vbd =
       player.projectedPoints !== null
         ? player.projectedPoints - replacementPoints[player.position]
         : NO_PROJECTION_VALUE;
     const order = sleeperOrderRank.get(player.id) ?? sleeperOrder.length;
-    const survival = survivalProbability(order, picksUntilNext);
+    return { player, vbd, survival: survivalProbability(order, picksUntilNext) };
+  });
+
+  // Best value still on the board at each position among players likely
+  // (>=50%) to survive to your next turn. What a player is worth *over
+  // that* is what you actually give up by passing on them now. This
+  // replaced a flat urgency multiplier, and it's what keeps a position
+  // from being punted until only scrubs are left: as the good receivers
+  // disappear, the gap to the next survivor grows and WR starts winning
+  // picks on its own, without needing a hardcoded positional preference.
+  const bestSurvivorVbd = new Map<FantasyPosition, number>();
+  for (const e of enriched) {
+    if (e.survival < 0.5) continue;
+    const cur = bestSurvivorVbd.get(e.player.position);
+    if (cur === undefined || e.vbd > cur) bestSurvivorVbd.set(e.player.position, e.vbd);
+  }
+
+  const scored: PickSuggestion[] = enriched.map(({ player, vbd, survival }) => {
+    const fallback = bestSurvivorVbd.get(player.position) ?? vbd;
+    const waitCost = Math.min(40, Math.max(0, vbd - fallback));
     const bonus = needBonus(player.position, myCounts, req, currentRound, totalRounds, slotsLeft, picksRemaining);
-    // Small additive nudge toward players unlikely to last until your
-    // next turn, rather than a multiplier that could swamp real value.
-    const score = vbd + bonus + 15 * (1 - survival);
+    const score = vbd + bonus + waitCost;
 
     const reasons: string[] = [];
     reasons.push(`${player.posRank ?? player.position} by expert consensus`);
     if (player.projectedPoints !== null) {
+      reasons.push(`${vbd >= 0 ? "+" : ""}${vbd.toFixed(0)} pts vs a replacement ${player.position}`);
+    }
+    if (waitCost >= 10) {
       reasons.push(
-        `${vbd >= 0 ? "+" : ""}${vbd.toFixed(0)} pts vs a replacement ${player.position}`,
+        `Passing costs you ~${waitCost.toFixed(0)} pts - the next ${player.position} likely to last is a real step down`,
       );
     }
     if (player.marketGap !== null && player.marketGap >= 15) {
