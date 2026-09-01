@@ -39,8 +39,8 @@ async function fetchFromCache(supabase, cacheKey) {
     .select("data, fetched_at")
     .eq("cache_key", cacheKey)
     .maybeSingle();
-  if (error || !data) return null;
-  return data;
+  if (error) return { row: null, error };
+  return { row: data, error: null };
 }
 
 async function fetchFromFantasyPros(apiKey, position) {
@@ -64,12 +64,25 @@ export default async function handler(req, res) {
   }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  const debug = req.query?.debug === "1";
   const result = {};
   const errors = [];
+  const debugInfo = {};
 
   for (const group of GROUPS) {
-    const cached = await fetchFromCache(supabase, group.cacheKey);
+    const { row: cached, error: readError } = await fetchFromCache(supabase, group.cacheKey);
+    if (readError && debug) debugInfo[group.position] = { readError: readError.message };
     const isFresh = cached && Date.now() - new Date(cached.fetched_at).getTime() < CACHE_TTL_MS;
+
+    // A broken cache (missing table, bad RLS, etc.) must never turn into
+    // "call FantasyPros on every single request" - that's the one thing
+    // this whole function exists to prevent. If we can't even read the
+    // cache, surface the error instead of silently falling through to a
+    // real upstream call.
+    if (readError) {
+      errors.push(`${group.position}: cache read failed - ${readError.message}`);
+      continue;
+    }
 
     if (isFresh) {
       result[group.position] = { ...cached.data, cached: true, fetchedAt: cached.fetched_at };
@@ -77,8 +90,6 @@ export default async function handler(req, res) {
     }
 
     if (!apiKey) {
-      // No key configured - serve whatever's cached (even if stale)
-      // rather than fail the whole response.
       if (cached) {
         result[group.position] = { ...cached.data, cached: true, stale: true, fetchedAt: cached.fetched_at };
       } else {
@@ -90,9 +101,16 @@ export default async function handler(req, res) {
     try {
       const fresh = await fetchFromFantasyPros(apiKey, group.position);
       const fetchedAt = new Date().toISOString();
-      await supabase
+      const { error: writeError } = await supabase
         .from("fantasypros_cache")
         .upsert({ cache_key: group.cacheKey, data: fresh, fetched_at: fetchedAt });
+      if (writeError) {
+        // We already spent the upstream request - still return the data -
+        // but surface this loudly, since it means the *next* request will
+        // spend another one instead of reading this from cache.
+        errors.push(`${group.position}: cache write failed (will re-fetch next time) - ${writeError.message}`);
+        if (debug) debugInfo[group.position] = { ...debugInfo[group.position], writeError: writeError.message };
+      }
       result[group.position] = { ...fresh, cached: false, fetchedAt };
     } catch (err) {
       // Upstream failed (rate limit, outage, etc.) - fall back to
@@ -106,10 +124,14 @@ export default async function handler(req, res) {
   }
 
   if (Object.keys(result).length === 0) {
-    res.status(502).json({ error: errors.join("; ") || "Failed to load rankings" });
+    res.status(502).json({ error: errors.join("; ") || "Failed to load rankings", debug: debug ? debugInfo : undefined });
     return;
   }
 
   res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
-  res.status(200).json({ groups: result, errors: errors.length > 0 ? errors : undefined });
+  res.status(200).json({
+    groups: result,
+    errors: errors.length > 0 ? errors : undefined,
+    debug: debug ? debugInfo : undefined,
+  });
 }
