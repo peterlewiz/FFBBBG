@@ -13,6 +13,7 @@ import {
   computeHistoricalPlayoffLine,
 } from "../lib/draftAssistant";
 import { computePickSuggestions, livePicksUntilNext, slotForOverallPick, type PickSuggestion } from "../lib/mockDraftSuggestions";
+import { rosterRequirementsFromLeague, rankByVbd } from "../lib/valueBasedRanking";
 import { computeAllTimePowerRankings } from "../lib/powerRankings";
 import { getSackoCounts } from "../lib/sacko";
 import { LoadingScreen, ErrorScreen } from "../components/StatusScreen";
@@ -243,6 +244,24 @@ export function DraftAssistant() {
   const powerRankings = useMemo(() => (history ? computeAllTimePowerRankings(history) : []), [history]);
   const sackoCounts = useMemo(() => (history ? getSackoCounts(history) : []), [history]);
 
+  // Cross-position ranking (see valueBasedRanking.ts) for the "ALL"
+  // filter and the Overall Big Board table below. This replaced a bug:
+  // the old "ALL" sort compared raw expertRank across positions, but
+  // that number is position-relative (RB1/WR1/QB1/TE1 are all literally
+  // "1"), so it just interleaved every position's #1s, then #2s, etc. -
+  // not a real "best overall" order. VBD (points over that position's
+  // own replacement level, from this league's actual roster settings)
+  // is the number that's actually comparable across positions.
+  const vbdRanked = useMemo(
+    () => (league && players.length > 0 ? rankByVbd(players, rosterRequirementsFromLeague(league)) : []),
+    [league, players],
+  );
+  const vbdById = useMemo(() => new Map(vbdRanked.map((p) => [p.id, p.vbd])), [vbdRanked]);
+  const sleeperOverallOrder = useMemo(() => {
+    const sorted = [...players].sort((a, b) => a.searchRank - b.searchRank);
+    return new Map(sorted.map((p, i) => [p.id, i + 1]));
+  }, [players]);
+
   const filteredPlayers = useMemo(() => {
     let list = players;
     if (positionFilter !== "ALL") list = list.filter((p) => p.position === positionFilter);
@@ -250,19 +269,19 @@ export function DraftAssistant() {
       const q = search.trim().toLowerCase();
       list = list.filter((p) => p.name.toLowerCase().includes(q));
     }
-    // expertRank (FantasyPros) and searchRank (Sleeper) aren't on the
-    // same scale - expertRank only ever runs 1-10 (the free API tier's
-    // real top 10 per position), while searchRank is a much wider,
-    // unrelated popularity number. Comparing them as raw numbers would
-    // sometimes rank an unverified #11 above a real, expert-confirmed
-    // #10. Group instead: every FantasyPros-verified player first
-    // (sorted by their own real rank), then everyone else by
-    // searchRank - correct regardless of position filter, since within
-    // "ALL" this also means every position's real top 10 surfaces before
-    // any Sleeper-only guess, without needing a cross-position blend
-    // that a top-10-per-position free tier can't actually support.
     return [...list]
       .sort((a, b) => {
+        if (positionFilter === "ALL") {
+          const aVbd = vbdById.get(a.id) ?? null;
+          const bVbd = vbdById.get(b.id) ?? null;
+          if (aVbd != null && bVbd != null) return bVbd - aVbd;
+          if (aVbd != null) return -1;
+          if (bVbd != null) return 1;
+          return a.searchRank - b.searchRank;
+        }
+        // Within a single position, expertRank IS directly comparable
+        // (it's that position's own real rank) - real consensus first,
+        // Sleeper's relevance number as a fallback for anyone unmatched.
         // `!= null` (loose) catches both null and a merely-absent field
         // (undefined) the same way - a stale cached player object from
         // before this field existed is `undefined`, not `null`, and a
@@ -275,7 +294,7 @@ export function DraftAssistant() {
         return a.searchRank - b.searchRank;
       })
       .slice(0, 150);
-  }, [players, positionFilter, search]);
+  }, [players, positionFilter, search, vbdById]);
 
   if (historyLoading || draftLoading) return <LoadingScreen label="Loading draft data…" />;
   if (historyError || !history) return <ErrorScreen message={historyError ?? "Unknown error"} />;
@@ -338,6 +357,91 @@ export function DraftAssistant() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Overall Big Board: a genuine cross-position ranking via VBD
+       * (points over that position's replacement level, computed from
+       * this league's actual roster settings) - not the same as either
+       * Sleeper's own order or FantasyPros' expert order on their own,
+       * see the explanatory text below the table. */}
+      {vbdRanked.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+          <div className="border-b border-line px-5 py-4">
+            <h2 className="text-lg font-semibold text-primary">🏆 Overall Big Board</h2>
+            <p className="text-xs text-muted">
+              One cross-position ranking, by value over replacement (VBD) - not the same as
+              Sleeper's order or FantasyPros' expert order on their own. See "How this differs" below.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-4 py-2">Rank</th>
+                  <th className="px-4 py-2">Player</th>
+                  <th className="px-4 py-2">Pos</th>
+                  <th className="px-4 py-2">Expert Pos Rank</th>
+                  <th className="px-4 py-2 text-right">VBD (pts)</th>
+                  <th className="px-4 py-2 text-right">Sleeper Overall #</th>
+                  <th className="px-4 py-2 text-right">Δ vs. Sleeper</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {vbdRanked
+                  .filter((p) => p.vbd !== null)
+                  .slice(0, 50)
+                  .map((p, i) => {
+                    const sleeperOverall = sleeperOverallOrder.get(p.id) ?? null;
+                    const delta = sleeperOverall !== null ? sleeperOverall - (i + 1) : null;
+                    return (
+                      <tr key={p.id} className="hover:bg-surface-2">
+                        <td className="px-4 py-2 font-bold tabular-nums text-primary">{i + 1}</td>
+                        <td className="px-4 py-2 font-medium text-primary">{p.name}</td>
+                        <td className="px-4 py-2 text-muted">{p.position}</td>
+                        <td className="px-4 py-2 text-muted">{p.posRank ?? "—"}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-body">{p.vbd!.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-muted">{sleeperOverall ?? "—"}</td>
+                        <td
+                          className={`px-4 py-2 text-right tabular-nums font-semibold ${
+                            delta === null ? "text-muted" : delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted"
+                          }`}
+                        >
+                          {delta === null ? "—" : delta > 0 ? `+${delta}` : delta}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-line px-5 py-4 text-xs text-muted">
+            <p className="mb-1 font-bold uppercase tracking-wide text-body">How this differs from Sleeper and from raw expert rank</p>
+            <p className="mb-1">
+              <strong className="text-body">Sleeper's own order</strong> (search_rank) is a single
+              cross-position popularity/relevance number, but it's not tuned to this league's
+              scoring or roster construction, and leans on name recognition as much as current
+              projected value.
+            </p>
+            <p className="mb-1">
+              <strong className="text-body">FantasyPros' expert rank</strong> (posRank/expertRank
+              used everywhere else on this page) is real, but only ever ranks players{" "}
+              <em>within their own position</em> - RB1, WR1, QB1, and TE1 are all literally rank
+              "1", so directly comparing that number across positions (which the Player Board used
+              to do on "ALL") isn't a real overall order at all.
+            </p>
+            <p>
+              <strong className="text-body">This board</strong> uses Value-Based Drafting: each
+              player's FantasyPros-projected points minus the points a freely available
+              replacement at the same position would score, given this league's actual starter and
+              FLEX slots - the standard way analysts build one real cross-position board. It's why
+              elite RBs can outrank a similarly-projected WR or QB: replacement-level RB production
+              craters faster than replacement-level WR/QB production does, so the same raw point
+              total is worth more at RB. "Δ vs. Sleeper" is positive when this board has a player
+              higher than Sleeper's own popularity ranking does (the room may be sleeping on them),
+              negative when Sleeper rates them higher (the room may reach for them).
+            </p>
           </div>
         </div>
       )}

@@ -1,5 +1,13 @@
 import type { DraftPlayer, FantasyPosition } from "./players";
 import type { SleeperDraft, SleeperDraftPick } from "../api/types";
+import {
+  rosterRequirementsFromDraftSettings,
+  computeReplacementPoints,
+  type RosterRequirements,
+} from "./valueBasedRanking";
+
+export type { RosterRequirements };
+export { rosterRequirementsFromDraftSettings };
 
 // ---------------------------------------------------------------------
 // Survival probability: will a player still be on the board by your
@@ -58,68 +66,12 @@ export function survivalProbability(sleeperOrderRank: number, picksUntilNext: nu
 }
 
 // ---------------------------------------------------------------------
-// Value-based drafting: cross-position quality via points over
-// replacement, so a QB's score and an RB's score mean the same thing.
+// Value-based drafting (RosterRequirements, computeReplacementPoints)
+// now lives in valueBasedRanking.ts, shared with the standing Player
+// Board's own cross-position ranking - see that file for the rationale.
 // ---------------------------------------------------------------------
 
 const FLEX_ELIGIBLE: FantasyPosition[] = ["RB", "WR", "TE"];
-
-export interface RosterRequirements {
-  QB: number;
-  RB: number;
-  WR: number;
-  TE: number;
-  K: number;
-  DEF: number;
-  flexSlots: number; // RB/WR/TE-eligible FLEX only
-  teams: number;
-}
-
-export function rosterRequirementsFromDraftSettings(settings: SleeperDraft["settings"]): RosterRequirements {
-  return {
-    QB: settings?.slots_qb ?? 1,
-    RB: settings?.slots_rb ?? 2,
-    WR: settings?.slots_wr ?? 2,
-    TE: settings?.slots_te ?? 1,
-    K: settings?.slots_k ?? 1,
-    DEF: settings?.slots_def ?? 1,
-    flexSlots: settings?.slots_flex ?? 1,
-    teams: settings?.teams ?? 12,
-  };
-}
-
-/** Replacement rank per position - the last player leaguewide who's a
- * real starter, including a fair split of FLEX demand across its
- * eligible positions. Used as the VBD baseline. */
-function replacementRanks(req: RosterRequirements): Record<FantasyPosition, number> {
-  const flexShare = (req.teams * req.flexSlots) / FLEX_ELIGIBLE.length;
-  return {
-    QB: Math.round(req.teams * req.QB),
-    RB: Math.round(req.teams * req.RB + flexShare),
-    WR: Math.round(req.teams * req.WR + flexShare),
-    TE: Math.round(req.teams * req.TE + flexShare),
-    K: Math.round(req.teams * req.K),
-    DEF: Math.round(req.teams * req.DEF),
-  };
-}
-
-function computeReplacementPoints(
-  players: DraftPlayer[],
-  req: RosterRequirements,
-): Record<FantasyPosition, number> {
-  const ranks = replacementRanks(req);
-  const byPosition: Record<FantasyPosition, DraftPlayer[]> = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
-  for (const p of players) {
-    if (p.projectedPoints !== null) byPosition[p.position].push(p);
-  }
-  const out = {} as Record<FantasyPosition, number>;
-  for (const pos of Object.keys(ranks) as FantasyPosition[]) {
-    const sorted = [...byPosition[pos]].sort((a, b) => (b.projectedPoints ?? 0) - (a.projectedPoints ?? 0));
-    const idx = Math.min(Math.max(ranks[pos] - 1, 0), sorted.length - 1);
-    out[pos] = sorted[idx]?.projectedPoints ?? 0;
-  }
-  return out;
-}
 
 // ---------------------------------------------------------------------
 // Positional need
