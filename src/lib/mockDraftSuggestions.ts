@@ -171,6 +171,12 @@ function needBonus(
     return (30 + 50 * Math.min(1, pressure)) * (1 + 0.35 * (shortfall - 1));
   }
   if (FLEX_FILLERS.includes(position) && flexSurplus(counts, req) < req.flexSlots) return 12;
+  // A second QB or TE cannot be started at all, and a replacement at
+  // those positions is only ~20-23 pts away on waivers (measured against
+  // this league's own pool) versus 48 for WR and 87 for RB. The roster
+  // spot is essentially always better spent on RB/WR depth, so this is
+  // steep enough that it only loses when there is genuinely nothing else.
+  if (position === "QB" || position === "TE") return -60;
   const extra =
     counts[position] - (req[position as keyof RosterRequirements] as number) -
     (FLEX_FILLERS.includes(position) ? req.flexSlots : 0);
@@ -297,8 +303,16 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     const waitCost = Math.min(40, Math.max(0, vbd - fallback));
     const bonus = needBonus(player.position, myCounts, req, currentRound, totalRounds, slotsLeft, picksRemaining);
     // Discount value you couldn't actually deploy in a starting lineup.
+    // A player who'd actually START carries his real signed value -
+    // being forced to start someone below replacement genuinely costs
+    // you points. A BENCH player never enters the lineup, so a bad one
+    // costs nothing; floor him at zero. Without this floor the discount
+    // was one-sided: it shrank an unstartable QB2's positive value
+    // toward zero while a below-replacement bench WR kept its full
+    // negative value, so once the good RB/WR were gone a backup QB or
+    // TE won every remaining pick on arithmetic alone.
     const share = startableShare(player.position, myCounts, req);
-    const usableValue = vbd > 0 ? vbd * share : vbd;
+    const usableValue = share >= 1 ? vbd : Math.max(0, vbd) * share;
     const score = usableValue + bonus + waitCost * share;
 
     const reasons: string[] = [];
