@@ -3,7 +3,7 @@ import { getDraft, getDraftPicks, getLeague } from "../api/sleeper";
 import type { SleeperDraft, SleeperDraftPick, SleeperLeague } from "../api/types";
 import { ROOT_LEAGUE_ID } from "./history";
 
-const POLL_MS = 15000; // only matters once the draft is actually live
+const POLL_MS = 15000;
 
 export interface DraftLiveState {
   league: SleeperLeague | null;
@@ -16,9 +16,18 @@ export interface DraftLiveState {
 /**
  * The current season's full league settings (scoring, roster, etc. -
  * not captured in the shared LeagueHistory cache since nothing else on
- * the site needs them) plus the draft itself, live-polled for picks once
- * drafting is underway so this auto-updates on draft day without a
- * manual refresh.
+ * the site needs them) plus the draft itself, live-polled for picks so
+ * this auto-updates on draft day without a manual refresh.
+ *
+ * Polls continuously regardless of the draft's current status - not
+ * just while it's literally "drafting". That check used to happen once,
+ * at mount: if the page was open early (during the pre_draft countdown)
+ * or the draft happened to be "paused" at that exact instant, polling
+ * never started at all, and it never got a second chance to - the whole
+ * point of leaving this page open in advance. Now it keeps polling
+ * through pre_draft/drafting/paused and only stops once the draft is
+ * actually "complete" (recursive setTimeout rather than setInterval, so
+ * a slow response can't cause overlapping requests to pile up).
  */
 export function useDraftLive(): DraftLiveState {
   const [state, setState] = useState<DraftLiveState>({
@@ -28,49 +37,40 @@ export function useDraftLive(): DraftLiveState {
     loading: true,
     error: null,
   });
-  const pollRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadOnce() {
+    async function tick() {
       try {
         const league = await getLeague(ROOT_LEAGUE_ID);
         const draft = league.draft_id ? await getDraft(league.draft_id).catch(() => null) : null;
-        const picks =
-          draft && draft.status !== "pre_draft"
-            ? await getDraftPicks(draft.draft_id).catch(() => [])
-            : [];
-        if (!cancelled) {
-          setState({ league, draft, picks, loading: false, error: null });
-        }
-        // Only worth polling once the draft has actually started -
-        // otherwise there's nothing new to fetch.
-        if (draft && draft.status === "drafting" && pollRef.current === null) {
-          pollRef.current = window.setInterval(async () => {
-            const freshPicks = await getDraftPicks(draft.draft_id).catch(() => null);
-            if (freshPicks && !cancelled) {
-              setState((prev) => ({ ...prev, picks: freshPicks }));
-            }
-          }, POLL_MS);
+        const picks = draft ? await getDraftPicks(draft.draft_id).catch(() => []) : [];
+        if (cancelled) return;
+        setState({ league, draft, picks, loading: false, error: null });
+        if (draft?.status !== "complete") {
+          timerRef.current = window.setTimeout(tick, POLL_MS);
         }
       } catch (err) {
-        if (!cancelled) {
-          setState({
-            league: null,
-            draft: null,
-            picks: [],
-            loading: false,
-            error: err instanceof Error ? err.message : "Failed to load draft data",
-          });
-        }
+        if (cancelled) return;
+        setState({
+          league: null,
+          draft: null,
+          picks: [],
+          loading: false,
+          error: err instanceof Error ? err.message : "Failed to load draft data",
+        });
+        // A transient network error shouldn't end polling for good -
+        // retry at a slower cadence rather than freezing here forever.
+        timerRef.current = window.setTimeout(tick, POLL_MS * 3);
       }
     }
 
-    loadOnce();
+    tick();
     return () => {
       cancelled = true;
-      if (pollRef.current !== null) window.clearInterval(pollRef.current);
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
   }, []);
 
