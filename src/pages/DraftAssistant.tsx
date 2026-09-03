@@ -41,17 +41,21 @@ const SUGGESTION_COUNT = 10;
 const MUTED_POSITIONS_KEY = "draft-assistant:muted-positions:v1";
 // Positions you can mute out of the suggestions by hand.
 const MUTABLE: FantasyPosition[] = ["QB", "RB", "WR", "TE", "K", "DEF"];
+// The podium step comes from dropping 2nd and 3rd, never from lifting
+// 1st. A negative top margin on the winner pulled it up out of the grid
+// and straight through whatever sat above - the muted-positions warning,
+// or the section heading when there wasn't one. Offsetting downward
+// keeps every card inside its own box, so it cannot overlap.
 const PODIUM = [
   {
     medal: "🥇",
-    // Center column on the podium, and the only card that's raised.
-    wrap: "sm:order-2 sm:-mt-4",
+    wrap: "sm:order-2",
     card: "border-amber-400/70 bg-amber-400/10 shadow-lg shadow-amber-400/20",
     chip: "bg-amber-400 text-ink",
     name: "text-lg",
   },
-  { medal: "🥈", wrap: "sm:order-1", card: "border-slate-300/50 bg-slate-300/5", chip: "bg-slate-300 text-ink", name: "text-base" },
-  { medal: "🥉", wrap: "sm:order-3", card: "border-orange-600/60 bg-orange-600/10", chip: "bg-orange-600 text-white", name: "text-base" },
+  { medal: "🥈", wrap: "sm:order-1 sm:mt-5", card: "border-slate-300/50 bg-slate-300/5", chip: "bg-slate-300 text-ink", name: "text-base" },
+  { medal: "🥉", wrap: "sm:order-3 sm:mt-5", card: "border-orange-600/60 bg-orange-600/10", chip: "bg-orange-600 text-white", name: "text-base" },
 ];
 
 type BoardMark = "mine" | "gone";
