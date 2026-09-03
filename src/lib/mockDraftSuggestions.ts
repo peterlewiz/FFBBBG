@@ -273,6 +273,15 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
   const myCounts = countByPosition(players.filter((p) => myPlayerIds.has(p.id)));
   const slotsLeft = emptyStarterSlots(myCounts, req);
 
+  // If FantasyPros is unreachable mid-draft (its API, Supabase, or the
+  // serverless function), every skill player would have a null expert
+  // rank and the gate below would drop all of them, leaving nothing but
+  // kickers and defenses on screen at exactly the worst moment. Only
+  // enforce the gate when expert data actually loaded; otherwise fall
+  // back to Sleeper's own ranking, which the sort already uses as its
+  // final tiebreak. Degraded, but still useful.
+  const hasExpertData = players.some((p) => p.expertRank !== null);
+
   let candidates = available.filter((p) => {
     // A hand-muted position is out before anything else is considered.
     if (excludePositions?.has(p.position)) return false;
@@ -280,7 +289,7 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     // deliberately never spend FantasyPros quota on them. Requiring an
     // expert rank made them permanently unsuggestable, so a full mock
     // draft finished with no kicker and no defense at all.
-    if (p.position !== "K" && p.position !== "DEF" && p.expertRank === null) return false;
+    if (hasExpertData && p.position !== "K" && p.position !== "DEF" && p.expertRank === null) return false;
     if (isBlockedSecondTE(p.position, myCounts, req)) return false;
     return myCounts[p.position] < POSITION_LIMIT[p.position];
   });
@@ -334,7 +343,15 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
     // negative value, so once the good RB/WR were gone a backup QB or
     // TE won every remaining pick on arithmetic alone.
     const share = startableShare(player.position, myCounts, req);
-    const usableValue = share >= 1 ? vbd : Math.max(0, vbd) * share;
+    // The bench floor below only makes sense for a REAL projection: a bad
+    // bench player costs nothing because you never start him. It must not
+    // apply to the no-projection sentinel, which is a "no data" marker
+    // rather than a production estimate. Flooring that at zero made an
+    // unstartable QB2 (0 - 60 = -60) beat a genuinely needed starter
+    // (-200 + 84 = -116) whenever nobody had a projection - i.e. exactly
+    // during a FantasyPros outage, when the fallback has to hold up.
+    const hasRealValue = valuePoints(player) !== null;
+    const usableValue = share >= 1 || !hasRealValue ? vbd : Math.max(0, vbd) * share;
     const score = usableValue + bonus + waitCost * share;
 
     const reasons: string[] = [];

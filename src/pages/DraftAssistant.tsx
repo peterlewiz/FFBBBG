@@ -30,8 +30,12 @@ const BOARD_STORAGE_KEY = "draft-assistant:board:v1";
 // default forever, since the saved value is read on mount. Bumping the
 // key retires the old saved value so a fresh mock opens straight away;
 // pasting any other draft ID into the box still overrides and persists.
-const MOCK_DRAFT_STORAGE_KEY = "draft-assistant:mock-draft-id:v2";
-const DEFAULT_MOCK_DRAFT_ID = "1400534735561756672";
+// v3 retires the hardcoded mock-draft default that used to live here.
+// It pointed at a mock that has since been deleted on Sleeper's side,
+// and because the saved value is read on mount it would have kept
+// winning over tonight's real draft. The panel now falls back to this
+// league's own draft_id instead of any hardcoded id.
+const MOCK_DRAFT_STORAGE_KEY = "draft-assistant:draft-id:v3";
 // Top 3 get the podium treatment; 4-10 are the fallback list behind them.
 const SUGGESTION_COUNT = 10;
 const MUTED_POSITIONS_KEY = "draft-assistant:muted-positions:v1";
@@ -97,8 +101,11 @@ export function DraftAssistant() {
   const [board, setBoard] = useState<Record<string, BoardMark>>({});
   const [positionFilter, setPositionFilter] = useState<FantasyPosition | "ALL">("ALL");
   const [search, setSearch] = useState("");
-  const [mockDraftInput, setMockDraftInput] = useState(DEFAULT_MOCK_DRAFT_ID);
-  const [mockDraftId, setMockDraftId] = useState<string | null>(DEFAULT_MOCK_DRAFT_ID);
+  const [mockDraftInput, setMockDraftInput] = useState("");
+  const [mockDraftId, setMockDraftId] = useState<string | null>(null);
+  // Set once a saved id has been read, so the league-draft fallback
+  // below can't race the restore and overwrite a deliberate choice.
+  const [draftIdRestored, setDraftIdRestored] = useState(false);
   const [mutedPositions, setMutedPositions] = useState<Set<FantasyPosition>>(new Set());
 
   useEffect(() => {
@@ -110,8 +117,9 @@ export function DraftAssistant() {
         setMockDraftId(saved);
       }
     } catch {
-      // ignore - just falls back to the default mock draft ID
+      // ignore - the league's own draft is used instead
     }
+    setDraftIdRestored(true);
     try {
       const saved = localStorage.getItem(MUTED_POSITIONS_KEY);
       if (saved) setMutedPositions(new Set(JSON.parse(saved) as FantasyPosition[]));
@@ -145,6 +153,17 @@ export function DraftAssistant() {
       }
     }
   }
+
+  // With nothing saved and nothing pasted, track this league's own
+  // draft - on draft night that's the one that matters, and it means
+  // the page works without having to hunt down an id first.
+  useEffect(() => {
+    if (!draftIdRestored || mockDraftId || !league?.draft_id) return;
+    setMockDraftId(league.draft_id);
+    setMockDraftInput(league.draft_id);
+  }, [draftIdRestored, mockDraftId, league?.draft_id]);
+
+  const isRealLeagueDraft = !!league?.draft_id && mockDraftId === league.draft_id;
 
   const {
     draft: mockDraft,
@@ -397,8 +416,14 @@ export function DraftAssistant() {
        * the page - it's the thing to check first on every single pick. */}
       <div className="overflow-hidden rounded-2xl border border-fuchsia-500/30 bg-surface">
         <div className="border-b border-line px-5 py-4">
-          <h2 className="text-lg font-semibold text-fuchsia-400">🔴 Live Mock Draft</h2>
-          <p className="text-xs text-muted">Paste a Sleeper mock draft URL or ID to get live pick suggestions</p>
+          <h2 className="text-lg font-semibold text-fuchsia-400">
+            {isRealLeagueDraft ? "🔴 Live Draft - your real league" : "🔴 Live Mock Draft"}
+          </h2>
+          <p className="text-xs text-muted">
+            {isRealLeagueDraft
+              ? "Tracking this league's own draft. Paste another ID to follow a mock instead."
+              : "Paste a Sleeper mock draft URL or ID to get live pick suggestions"}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
           <input
@@ -414,6 +439,14 @@ export function DraftAssistant() {
           >
             Load
           </button>
+          {league?.draft_id && !isRealLeagueDraft && (
+            <button
+              onClick={() => loadMockDraft(league.draft_id as string)}
+              className="rounded-lg bg-neon/20 px-3 py-1.5 text-xs font-semibold text-neon hover:bg-neon/30"
+            >
+              Use real draft
+            </button>
+          )}
         </div>
         <div className="p-5">
           {!mockDraftId ? (
