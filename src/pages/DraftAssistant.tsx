@@ -34,6 +34,9 @@ const MOCK_DRAFT_STORAGE_KEY = "draft-assistant:mock-draft-id:v2";
 const DEFAULT_MOCK_DRAFT_ID = "1400534735561756672";
 // Top 3 get the podium treatment; 4-10 are the fallback list behind them.
 const SUGGESTION_COUNT = 10;
+const MUTED_POSITIONS_KEY = "draft-assistant:muted-positions:v1";
+// Positions you can mute out of the suggestions by hand.
+const MUTABLE: FantasyPosition[] = ["QB", "RB", "WR", "TE", "K", "DEF"];
 const PODIUM = [
   {
     medal: "🥇",
@@ -96,6 +99,7 @@ export function DraftAssistant() {
   const [search, setSearch] = useState("");
   const [mockDraftInput, setMockDraftInput] = useState(DEFAULT_MOCK_DRAFT_ID);
   const [mockDraftId, setMockDraftId] = useState<string | null>(DEFAULT_MOCK_DRAFT_ID);
+  const [mutedPositions, setMutedPositions] = useState<Set<FantasyPosition>>(new Set());
 
   useEffect(() => {
     setBoard(loadBoard());
@@ -108,7 +112,27 @@ export function DraftAssistant() {
     } catch {
       // ignore - just falls back to the default mock draft ID
     }
+    try {
+      const saved = localStorage.getItem(MUTED_POSITIONS_KEY);
+      if (saved) setMutedPositions(new Set(JSON.parse(saved) as FantasyPosition[]));
+    } catch {
+      // ignore - nothing muted is a fine default
+    }
   }, []);
+
+  function toggleMuted(pos: FantasyPosition) {
+    setMutedPositions((prev) => {
+      const next = new Set(prev);
+      if (next.has(pos)) next.delete(pos);
+      else next.add(pos);
+      try {
+        localStorage.setItem(MUTED_POSITIONS_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore - just won't persist across reloads
+      }
+      return next;
+    });
+  }
 
   function loadMockDraft(raw: string) {
     const id = extractDraftId(raw);
@@ -255,6 +279,12 @@ export function DraftAssistant() {
     // how hard the engine pushes to finish an incomplete starting lineup.
     const picksRemaining = myOverallPicks.filter((o) => o >= nextOverall).length;
     const myDraftedPlayers = players.filter((p) => myPlayerIds.has(p.id));
+    // Muting is an explicit override, so it is never quietly reinstated -
+    // but if you mute a position you still have to start, say so.
+    const mutedButNeeded = [...mutedPositions].filter((pos) => {
+      const need = { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 }[pos] ?? 0;
+      return myDraftedPlayers.filter((p) => p.position === pos).length < need;
+    });
     // Surfaced in the UI so it's obvious at a glance whether the engine
     // is actually reading your roster - the roster_id bug made it think
     // your team was empty all draft, and nothing on screen showed that.
@@ -273,6 +303,7 @@ export function DraftAssistant() {
         currentRound,
         picksUntilNext: picksUntilMyNext,
         picksRemaining,
+        excludePositions: mutedPositions,
       }, SUGGESTION_COUNT);
     }
 
@@ -285,11 +316,12 @@ export function DraftAssistant() {
       currentRound,
       picksUntilMyNext,
       myDraftedPlayers,
+      mutedButNeeded,
       myPositionCounts,
       suggestions,
       done: mockPicks.length >= teams * rounds,
     };
-  }, [mockDraft, mockPicks, players]);
+  }, [mockDraft, mockPicks, players, mutedPositions]);
 
   const playoffLine = useMemo(() => (history ? computeHistoricalPlayoffLine(history) : []), [history]);
   const powerRankings = useMemo(() => (history ? computeAllTimePowerRankings(history) : []), [history]);
@@ -440,12 +472,42 @@ export function DraftAssistant() {
                 <p className="text-sm text-muted">Draft complete.</p>
               ) : (
                 <div>
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
-                    Suggestions for your pick
-                  </p>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-muted">
+                      Suggestions for your pick
+                    </p>
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-muted">Suggest:</span>
+                    {MUTABLE.map((pos) => {
+                      const muted = mutedPositions.has(pos);
+                      return (
+                        <button
+                          key={pos}
+                          onClick={() => toggleMuted(pos)}
+                          title={muted ? `${pos} is muted - click to suggest it again` : `Mute ${pos} suggestions`}
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-bold transition-colors ${
+                            muted
+                              ? "bg-surface-2 text-muted line-through opacity-60 hover:opacity-90"
+                              : "bg-fuchsia-500/20 text-fuchsia-300 hover:bg-fuchsia-500/30"
+                          }`}
+                        >
+                          {pos}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {mockDraftInfo.mutedButNeeded.length > 0 && (
+                    <p className="mb-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300">
+                      Heads up: {mockDraftInfo.mutedButNeeded.join(", ")} muted, but you still need to start{" "}
+                      {mockDraftInfo.mutedButNeeded.length === 1 ? "one" : "those"}. Suggestions won't remind you.
+                    </p>
+                  )}
                   {mockDraftInfo.suggestions.length === 0 ? (
                     <p className="text-sm text-muted">
-                      {playersLoading ? "Loading player pool…" : "No candidates - waiting on player/expert data."}
+                      {playersLoading
+                        ? "Loading player pool…"
+                        : mutedPositions.size > 0
+                          ? `Nothing to suggest with ${[...mutedPositions].join(", ")} muted - unmute a position above.`
+                          : "No candidates - waiting on player/expert data."}
                     </p>
                   ) : (
                     <>

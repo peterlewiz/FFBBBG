@@ -231,11 +231,26 @@ export interface SuggestionInput {
   /** How many picks you have left in the whole draft, including this
    * one - drives roster-completion urgency. */
   picksRemaining: number;
+  /** Positions you've muted by hand. A deliberate override: these are
+   * dropped from the candidate pool outright, ahead of every value and
+   * roster-need calculation, including the endgame roster-completion
+   * rule. If you mute a position you still need to start, the engine
+   * will not quietly reinstate it - the UI warns instead, so the
+   * override stays yours. */
+  excludePositions?: ReadonlySet<FantasyPosition>;
 }
 
 export function computePickSuggestions(input: SuggestionInput, count = 3): PickSuggestion[] {
-  const { players, draftedPlayerIds, myPlayerIds, draftSettings, currentRound, picksUntilNext, picksRemaining } =
-    input;
+  const {
+    players,
+    draftedPlayerIds,
+    myPlayerIds,
+    draftSettings,
+    currentRound,
+    picksUntilNext,
+    picksRemaining,
+    excludePositions,
+  } = input;
   const req = rosterRequirementsFromDraftSettings(draftSettings);
   const totalRounds = draftSettings?.rounds ?? 14;
 
@@ -259,6 +274,8 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
   const slotsLeft = emptyStarterSlots(myCounts, req);
 
   let candidates = available.filter((p) => {
+    // A hand-muted position is out before anything else is considered.
+    if (excludePositions?.has(p.position)) return false;
     // Expert data is the quality gate - but K/DEF are exempt, since we
     // deliberately never spend FantasyPros quota on them. Requiring an
     // expert rank made them permanently unsuggestable, so a full mock
@@ -272,7 +289,12 @@ export function computePickSuggestions(input: SuggestionInput, count = 3): PickS
   // suggesting luxury depth and only offer players who actually
   // complete the lineup.
   if (picksRemaining <= slotsLeft) {
-    candidates = candidates.filter((p) => fillsRequiredSlot(p.position, myCounts, req));
+    const completesRoster = candidates.filter((p) => fillsRequiredSlot(p.position, myCounts, req));
+    // Muting can empty this outright - mute QB and TE while both slots
+    // are still open and the only roster-completing positions are gone.
+    // Falling back to the wider pool beats showing nothing at all; the
+    // mute is still respected, it just no longer narrows any further.
+    if (completesRoster.length > 0) candidates = completesRoster;
   }
 
   // Two passes: value + survival first, so the second pass can measure
