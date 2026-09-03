@@ -170,6 +170,9 @@ export function DraftAssistant() {
     picks: mockPicks,
     loading: mockLoading,
     error: mockError,
+    updatedAt: mockUpdatedAt,
+    refreshing: mockRefreshing,
+    refresh: refreshMockDraft,
   } = useMockDraftLive(mockDraftId);
 
   function cycleMark(playerId: string) {
@@ -446,6 +449,26 @@ export function DraftAssistant() {
             >
               Use real draft
             </button>
+          )}
+          {mockDraftId && (
+            <button
+              onClick={refreshMockDraft}
+              disabled={mockRefreshing}
+              title="Fetch the board right now instead of waiting for the next automatic check"
+              className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+            >
+              {mockRefreshing ? "Refreshing…" : "↻ Refresh now"}
+            </button>
+          )}
+          {mockUpdatedAt && (
+            <span className="text-[11px] text-muted" title="Auto-refreshes every 4 seconds">
+              updated{" "}
+              {mockUpdatedAt.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </span>
           )}
         </div>
         <div className="p-5">
