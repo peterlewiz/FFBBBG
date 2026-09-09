@@ -10,6 +10,7 @@ import { ROOT_LEAGUE_ID, type LeagueHistory } from "../lib/history";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
 import { FightCard } from "../components/FightCard";
+import { useTeamRosters, type RosterSlot, type TeamRoster } from "../lib/useTeamRosters";
 
 /**
  * Round-1 playoff games from the most recent complete season, so the page
@@ -56,12 +57,16 @@ export function Predictions() {
   const predictionsState = usePredictions(ROOT_LEAGUE_ID);
 
   const { state: nflState, error: nflStateError } = useNflState();
+  const rostersState = useTeamRosters(ROOT_LEAGUE_ID);
 
   const [pickerUserId, setPickerUserId] = useState<string | null>(() =>
     typeof window !== "undefined" ? window.localStorage.getItem(PICKER_STORAGE_KEY) : null,
   );
   const [saving, setSaving] = useState<string | null>(null); // matchup key currently saving
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [rosterUserId, setRosterUserId] = useState<string | null>(null);
+  // Which matchup has its head-to-head roster comparison open.
+  const [comparingMatchupId, setComparingMatchupId] = useState<number | null>(null);
 
   function choosePicker(userId: string) {
     setPickerUserId(userId);
@@ -166,6 +171,20 @@ export function Predictions() {
   const managersSorted = Object.values(data.managers).sort((a, b) =>
     a.displayName.localeCompare(b.displayName),
   );
+  // Only teams that actually hold a roster this season - data.managers
+  // spans every season, so it still includes people who've since left.
+  const rosterOptions = rostersState.rosters
+    .map((r) => (r.ownerUserId ? data.managers[r.ownerUserId] : null))
+    .filter((m): m is NonNullable<typeof m> => !!m)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  const selectedRosterUserId = rosterUserId ?? pickerUserId ?? rosterOptions[0]?.userId ?? null;
+  const selectedRoster =
+    rostersState.rosters.find((r) => r.ownerUserId === selectedRosterUserId) ?? null;
+  const rosterByUser = new Map(
+    rostersState.rosters
+      .filter((r) => r.ownerUserId)
+      .map((r) => [r.ownerUserId as string, r]),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -265,28 +284,104 @@ export function Predictions() {
                   p.matchup_id === m.matchupId,
               );
               const isSaving = saving === `${targetWeek}:${m.matchupId}`;
+              const isComparing = comparingMatchupId === m.matchupId;
               return (
-                <li key={m.matchupId} className="flex items-center gap-2 px-4 py-3 sm:gap-3 sm:px-5">
-                  <PickButton
-                    manager={m.managerA}
-                    selected={existingPick?.picked_user_id === m.managerA.userId}
-                    disabled={m.locked || isSaving}
-                    onClick={() => handlePick(m.matchupId, m.managerA.userId)}
-                  />
-                  <span className="shrink-0 text-[10px] font-medium uppercase text-muted sm:text-xs">
-                    vs
-                  </span>
-                  <PickButton
-                    manager={m.managerB}
-                    selected={existingPick?.picked_user_id === m.managerB.userId}
-                    disabled={m.locked || isSaving}
-                    onClick={() => handlePick(m.matchupId, m.managerB.userId)}
-                  />
-                  {m.locked && <span className="shrink-0 text-xs text-muted">🔒</span>}
+                <li key={m.matchupId} className="px-4 py-3 sm:px-5">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <PickButton
+                      manager={m.managerA}
+                      selected={existingPick?.picked_user_id === m.managerA.userId}
+                      disabled={m.locked || isSaving}
+                      onClick={() => handlePick(m.matchupId, m.managerA.userId)}
+                    />
+                    {/* The "vs" doubles as the toggle - it sits between the
+                      * two teams and isn't otherwise interactive, so it
+                      * can't be confused with making a pick. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setComparingMatchupId((prev) => (prev === m.matchupId ? null : m.matchupId))
+                      }
+                      title="Compare both rosters"
+                      className={`shrink-0 rounded-md px-1 py-1 text-[10px] font-medium uppercase transition-colors sm:px-1.5 sm:text-xs ${
+                        isComparing ? "bg-neon/20 text-neon" : "text-muted hover:bg-surface-2 hover:text-body"
+                      }`}
+                    >
+                      vs {isComparing ? "▾" : "▸"}
+                    </button>
+                    <PickButton
+                      manager={m.managerB}
+                      selected={existingPick?.picked_user_id === m.managerB.userId}
+                      disabled={m.locked || isSaving}
+                      onClick={() => handlePick(m.matchupId, m.managerB.userId)}
+                    />
+                    {m.locked && <span className="shrink-0 text-xs text-muted">🔒</span>}
+                  </div>
+                  {isComparing && (
+                    <RosterComparison
+                      managerA={m.managerA}
+                      managerB={m.managerB}
+                      rosterA={rosterByUser.get(m.managerA.userId) ?? null}
+                      rosterB={rosterByUser.get(m.managerB.userId) ?? null}
+                      loading={rostersState.loading}
+                    />
+                  )}
                 </li>
               );
             })}
           </ul>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-4">
+          <h2 className="text-lg font-semibold text-primary">Team Rosters</h2>
+          <select
+            value={selectedRosterUserId ?? ""}
+            onChange={(e) => setRosterUserId(e.target.value)}
+            className="ml-auto rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
+          >
+            <option value="" disabled>
+              Select a team
+            </option>
+            {rosterOptions.map((o) => (
+              <option key={o.userId} value={o.userId}>
+                {o.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+        {rostersState.loading ? (
+          <p className="px-5 py-4 text-sm text-muted">Loading rosters…</p>
+        ) : rostersState.error ? (
+          <p className="px-5 py-4 text-sm text-red-400">{rostersState.error}</p>
+        ) : !selectedRoster ? (
+          <p className="px-5 py-4 text-sm text-muted">Choose a team to see their roster.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">Starters</p>
+              <ul className="flex flex-col gap-1">
+                {selectedRoster.starters.map((s, i) => (
+                  <RosterLine key={`s${i}`} slot={s} showSlot />
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
+                Bench ({selectedRoster.bench.length})
+              </p>
+              {selectedRoster.bench.length === 0 ? (
+                <p className="text-sm text-muted">Empty bench.</p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {selectedRoster.bench.map((s, i) => (
+                    <RosterLine key={`b${i}`} slot={s} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -331,6 +426,143 @@ export function Predictions() {
   );
 }
 
+/**
+ * Both starting lineups side by side, aligned slot for slot, so a matchup
+ * can be read position by position rather than as two separate lists.
+ * Benches follow underneath - unaligned, since they fill no fixed slot.
+ */
+function RosterComparison({
+  managerA,
+  managerB,
+  rosterA,
+  rosterB,
+  loading,
+}: {
+  managerA: { userId: string; displayName: string };
+  managerB: { userId: string; displayName: string };
+  rosterA: TeamRoster | null;
+  rosterB: TeamRoster | null;
+  loading: boolean;
+}) {
+  if (loading) return <p className="mt-3 text-sm text-muted">Loading rosters…</p>;
+  if (!rosterA || !rosterB)
+    return <p className="mt-3 text-sm text-muted">Rosters aren&apos;t available for this matchup.</p>;
+
+  // Both teams share the league's slot layout, so either side's length
+  // works - take the longer one defensively.
+  const slotCount = Math.max(rosterA.starters.length, rosterB.starters.length);
+  const benchRows = Math.max(rosterA.bench.length, rosterB.bench.length);
+
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-surface-2/40 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide">
+        <span className="flex-1 truncate" style={{ color: teamColor(managerA.userId) }}>
+          {managerA.displayName}
+        </span>
+        <span className="shrink-0 text-muted">Starters</span>
+        <span className="flex-1 truncate text-right" style={{ color: teamColor(managerB.userId) }}>
+          {managerB.displayName}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-1">
+        {Array.from({ length: slotCount }, (_, i) => (
+          <li key={i} className="flex items-center gap-2 text-sm">
+            <ComparisonCell slot={rosterA.starters[i]} align="left" />
+            <span className="w-8 shrink-0 text-center text-[10px] font-bold uppercase tracking-wide text-neon sm:w-11">
+              {rosterA.starters[i]?.slot ?? rosterB.starters[i]?.slot ?? ""}
+            </span>
+            <ComparisonCell slot={rosterB.starters[i]} align="right" />
+          </li>
+        ))}
+      </ul>
+
+      {benchRows > 0 && (
+        <>
+          <div className="mb-2 mt-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted">
+            <span className="flex-1" />
+            <span className="shrink-0">Bench</span>
+            <span className="flex-1" />
+          </div>
+          <ul className="flex flex-col gap-1">
+            {Array.from({ length: benchRows }, (_, i) => (
+              <li key={i} className="flex items-center gap-2 text-sm">
+                <ComparisonCell slot={rosterA.bench[i]} align="left" />
+                <span className="w-8 shrink-0 sm:w-11" />
+                <ComparisonCell slot={rosterB.bench[i]} align="right" />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ComparisonCell({ slot, align }: { slot: RosterSlot | undefined; align: "left" | "right" }) {
+  const right = align === "right";
+  if (!slot || (!slot.player && !slot.playerId)) {
+    return <span className={`flex-1 truncate text-xs text-muted ${right ? "text-right" : ""}`}>—</span>;
+  }
+  if (!slot.player) {
+    return (
+      <span className={`flex-1 truncate text-xs text-muted ${right ? "text-right" : ""}`}>
+        Unknown ({slot.playerId})
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`flex flex-1 min-w-0 items-center gap-1.5 ${right ? "flex-row-reverse text-right" : ""}`}
+    >
+      <span className="hidden w-7 shrink-0 text-center text-[10px] font-bold text-muted sm:block">
+        {slot.player.position}
+      </span>
+      <span className="truncate text-primary">{slot.player.name}</span>
+      {slot.player.injuryStatus && (
+        <span className="shrink-0 text-[9px] font-bold uppercase text-amber-400">
+          {slot.player.injuryStatus.slice(0, 1)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function RosterLine({ slot, showSlot = false }: { slot: RosterSlot; showSlot?: boolean }) {
+  return (
+    <li className="flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-sm">
+      {showSlot && (
+        <span className="w-11 shrink-0 text-[10px] font-bold uppercase tracking-wide text-neon">
+          {slot.slot}
+        </span>
+      )}
+      {slot.player ? (
+        <>
+          {/* The slot label already says the position for every dedicated
+            * slot, so only spell it out where they differ - i.e. FLEX. */}
+          {slot.player.position !== slot.slot && (
+            <span className="w-8 shrink-0 text-center text-[10px] font-bold text-muted">
+              {slot.player.position}
+            </span>
+          )}
+          <span className="flex-1 truncate text-primary">{slot.player.name}</span>
+          {slot.player.injuryStatus && (
+            <span className="shrink-0 text-[10px] font-semibold uppercase text-amber-400">
+              {slot.player.injuryStatus}
+            </span>
+          )}
+          <span className="w-9 shrink-0 text-right text-[11px] text-muted">
+            {slot.player.team ?? "FA"}
+          </span>
+        </>
+      ) : (
+        <span className="flex-1 text-muted">
+          {slot.playerId ? `Unknown player (${slot.playerId})` : "Empty"}
+        </span>
+      )}
+    </li>
+  );
+}
+
 function PickButton({
   manager,
   selected,
@@ -348,7 +580,7 @@ function PickButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
+      className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
         selected ? "" : "border-line bg-surface text-body hover:bg-surface-2"
       } ${disabled && !selected ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
       style={

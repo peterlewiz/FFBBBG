@@ -13,15 +13,18 @@ const FANTASY_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"] as const;
 export type FantasyPosition = (typeof FANTASY_POSITIONS)[number];
 
 // Sleeper's /players/nfl is ~15MB covering every player it's ever tracked
-// (mostly long-retired or practice-squad names). Kept per position so a
-// deep redraft league still has waiver-wire depth without hauling the
-// whole irrelevant tail of the player pool into localStorage.
+// (mostly long-retired or practice-squad names). Capped per position so
+// the irrelevant tail never reaches localStorage, but deep enough to name
+// every player anyone actually rosters - the team-roster view needs that,
+// and the old K cap of 40 already missed a rostered kicker. In-season
+// waiver adds skew towards exactly these low-relevance names, hence the
+// headroom. Still only ~780 entries out of ~12k.
 const CAP_PER_POSITION: Record<FantasyPosition, number> = {
-  QB: 60,
-  RB: 150,
-  WR: 200,
-  TE: 100,
-  K: 40,
+  QB: 75,
+  RB: 200,
+  WR: 250,
+  TE: 125,
+  K: 100,
   DEF: 32, // all 32 teams
 };
 
@@ -30,7 +33,7 @@ const CAP_PER_POSITION: Record<FantasyPosition, number> = {
 // unmatched players (see mergeExpertRankings/expertRank): `undefined`
 // isn't `null`, so a strict `!== null` check treated a merely-absent
 // field as "has a real expert rank", which the sort could put anywhere.
-const CACHE_KEY = "players:fantasy-relevant:v5";
+const CACHE_KEY = "players:fantasy-relevant:v6";
 // Sleeper asks that this endpoint only be hit about once a day.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 

@@ -83,6 +83,14 @@ export interface SleeperRoster {
   roster_id: number;
   owner_id: string | null;
   co_owners?: string[] | null;
+  /** Player ids in the starting lineup, positionally aligned with the
+   * league's roster_positions minus its BN slots. An empty slot is the
+   * string "0", not a real player id. */
+  starters?: string[] | null;
+  /** Every player id on the roster, starters included and unordered. */
+  players?: string[] | null;
+  reserve?: string[] | null;
+  taxi?: string[] | null;
   settings: {
     wins: number;
     losses: number;
