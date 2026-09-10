@@ -11,6 +11,7 @@ import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
 import { FightCard } from "../components/FightCard";
 import { useTeamRosters, type RosterSlot, type TeamRoster } from "../lib/useTeamRosters";
+import { useWeekLock } from "../lib/useWeekLock";
 
 /**
  * Round-1 playoff games from the most recent complete season, so the page
@@ -75,15 +76,46 @@ export function Predictions() {
 
   const currentSeason = data?.seasons[data.seasons.length - 1] ?? null;
   const targetWeek = nflState?.week ?? null;
+  // Read live rather than from the 45-minute history cache - see useWeekLock.
+  const weekLock = useWeekLock(ROOT_LEAGUE_ID, targetWeek);
 
-  const matchups = useMemo(() => {
-    if (!data || !currentSeason || targetWeek === null) return [];
+  /**
+   * This week's matchups, plus whether picks are closed.
+   *
+   * Locking used to be per-matchup on `points > 0`, which let real
+   * results leak into open picks: the moment the week's first game
+   * kicks off, every matchup whose players hadn't scored yet was still
+   * editable. Observed live in week 1 - three of six matchups sat at
+   * 0-0 while other teams were already scoring, so you could watch
+   * Thursday night and then still change those picks.
+   *
+   * Any points anywhere in the league means an NFL game is in progress
+   * or finished, so the whole week closes together. Before kickoff every
+   * roster is genuinely 0.0, so this can't fire early. A week earlier
+   * than the NFL's current week is closed regardless.
+   */
+  const { matchups, weekLocked, lockReason } = useMemo(() => {
+    const empty = { matchups: [], weekLocked: false, lockReason: null as string | null };
+    if (!data || !currentSeason || targetWeek === null) return empty;
     const rosterToUser = new Map(
       currentSeason.rosters
         .filter((r) => r.ownerUserId)
         .map((r) => [r.rosterId, r.ownerUserId as string]),
     );
     const weekRows = currentSeason.weeks.filter((w) => w.week === targetWeek);
+
+    // Live check first; the cached-history rows are only a fallback for
+    // when that request hasn't landed or failed.
+    const weekUnderway =
+      weekLock.anyPointsScored ?? weekRows.some((r) => r.points > 0);
+    const weekIsPast = nflState !== null && targetWeek < nflState.week;
+    const locked = weekUnderway || weekIsPast;
+    const reason = weekIsPast
+      ? `Week ${targetWeek} is over - picks are closed.`
+      : weekUnderway
+        ? `Week ${targetWeek} is underway - picks are locked for every matchup.`
+        : null;
+
     const byMatchup = new Map<number, typeof weekRows>();
     for (const row of weekRows) {
       if (row.matchupId === null) continue;
@@ -92,23 +124,25 @@ export function Predictions() {
       byMatchup.set(row.matchupId, arr);
     }
 
-    return Array.from(byMatchup.entries())
+    const list = Array.from(byMatchup.entries())
       .filter(([, pair]) => pair.length === 2)
       .map(([matchupId, pair]) => {
         const [a, b] = pair;
         const userA = rosterToUser.get(a.rosterId);
         const userB = rosterToUser.get(b.rosterId);
         if (!userA || !userB) return null;
-        const locked = a.points > 0 || b.points > 0;
+        const livePoints = weekLock.pointsByMatchup.get(matchupId) ?? 0;
         return {
           matchupId,
           managerA: data.managers[userA],
           managerB: data.managers[userB],
-          locked,
+          locked: locked || livePoints > 0 || a.points > 0 || b.points > 0,
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [data, currentSeason, targetWeek]);
+
+    return { matchups: list, weekLocked: locked, lockReason: reason };
+  }, [data, currentSeason, targetWeek, nflState, weekLock]);
 
   const playoffPreview = useMemo(
     () => (data && matchups.length === 0 ? findPlayoffPreview(data) : null),
@@ -143,6 +177,12 @@ export function Predictions() {
     if (!pickerUserId || !currentSeason || targetWeek === null) return;
     const match = matchups.find((m) => m.matchupId === matchupId);
     if (!match) return;
+    // Re-check at save time, not just in the disabled prop: a tab opened
+    // before kickoff and clicked afterwards would otherwise still write.
+    if (weekLocked || match.locked) {
+      setSaveError("That matchup is locked - the week has already started.");
+      return;
+    }
 
     const key = `${targetWeek}:${matchupId}`;
     setSaving(key);
@@ -233,6 +273,9 @@ export function Predictions() {
           <h2 className="text-lg font-semibold text-primary">
             {targetWeek !== null ? `Week ${targetWeek} Matchups` : "This Week's Matchups"}
           </h2>
+          {lockReason && (
+            <p className="mt-0.5 text-xs font-medium text-amber-400">🔒 {lockReason}</p>
+          )}
         </div>
         {nflStateError ? (
           <p className="px-5 py-4 text-sm text-red-400">{nflStateError}</p>
