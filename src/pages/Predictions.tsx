@@ -5,7 +5,14 @@ import { usePredictions } from "../lib/usePredictions";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { useNflState } from "../lib/useNflState";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
-import { computeLeaderboard, upsertPrediction, type PredictionRow } from "../lib/predictions";
+import {
+  computeLeaderboard,
+  computeWeekPicks,
+  resolveWeekOutcomes,
+  upsertPrediction,
+  weeksWithPredictions,
+  type PredictionRow,
+} from "../lib/predictions";
 import { ROOT_LEAGUE_ID, type LeagueHistory } from "../lib/history";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
@@ -68,6 +75,7 @@ export function Predictions() {
   const [rosterUserId, setRosterUserId] = useState<string | null>(null);
   // Which matchup has its head-to-head roster comparison open.
   const [comparingMatchupId, setComparingMatchupId] = useState<number | null>(null);
+  const [historyWeek, setHistoryWeek] = useState<number | null>(null);
 
   function choosePicker(userId: string) {
     setPickerUserId(userId);
@@ -153,6 +161,26 @@ export function Predictions() {
     () => (data ? computeLeaderboard(data, predictionsState.data) : []),
     [data, predictionsState.data],
   );
+
+  const pastWeeks = useMemo(
+    () =>
+      currentSeason ? weeksWithPredictions(predictionsState.data, currentSeason.season) : [],
+    [predictionsState.data, currentSeason],
+  );
+  // Default to the most recent week that actually has picks.
+  const shownWeek = historyWeek ?? pastWeeks[0] ?? null;
+  const weekHistory = useMemo(() => {
+    if (!data || !currentSeason || shownWeek === null) return null;
+    const outcomes = resolveWeekOutcomes(data, currentSeason.season, shownWeek);
+    const rows = computeWeekPicks(
+      data,
+      predictionsState.data,
+      currentSeason.season,
+      shownWeek,
+      outcomes,
+    );
+    return { outcomes, rows };
+  }, [data, currentSeason, predictionsState.data, shownWeek]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -378,6 +406,83 @@ export function Predictions() {
 
       <div className="rounded-2xl border border-line bg-surface shadow-sm">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-primary">Past Picks</h2>
+            <p className="text-xs text-muted">
+              Everyone&apos;s picks for a week, side by side. Green = right, red = wrong.
+            </p>
+          </div>
+          {pastWeeks.length > 0 && (
+            <select
+              value={shownWeek ?? ""}
+              onChange={(e) => setHistoryWeek(Number(e.target.value))}
+              className="ml-auto rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
+            >
+              {pastWeeks.map((w) => (
+                <option key={w} value={w}>
+                  Week {w}
+                  {w === targetWeek ? " (current)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {pastWeeks.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-muted">No picks have been made yet.</p>
+        ) : !weekHistory || weekHistory.rows.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-muted">No picks recorded for that week.</p>
+        ) : (
+          /* Wide by nature - one column per matchup - so it scrolls
+             inside itself rather than making the page scroll. */
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className="sticky left-0 z-10 bg-surface px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-muted">
+                    Manager
+                  </th>
+                  {weekHistory.outcomes.map((o) => (
+                    <th key={o.matchupId} className="px-2 py-2 text-center text-[10px] font-medium">
+                      <MatchupHeader outcome={o} managers={data.managers} />
+                    </th>
+                  ))}
+                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-muted">
+                    Record
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {weekHistory.rows.map((row) => (
+                  <tr key={row.manager.userId} className="hover:bg-surface-2/50">
+                    {/* Pinned so you keep track of whose row you're on
+                        while the matchup columns scroll. */}
+                    <td className="sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-2">
+                      <Link
+                        to={`/manager/${row.manager.userId}`}
+                        className="font-medium hover:underline"
+                        style={{ color: teamColor(row.manager.userId) }}
+                      >
+                        {row.manager.displayName}
+                      </Link>
+                    </td>
+                    {row.cells.map((c) => (
+                      <td key={c.matchupId} className="px-2 py-2 text-center">
+                        <PickCell cell={c} managers={data.managers} />
+                      </td>
+                    ))}
+                    <td className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold text-body">
+                      {row.scored > 0 ? `${row.correct}/${row.scored}` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">Team Rosters</h2>
           <select
             value={selectedRosterUserId ?? ""}
@@ -466,6 +571,60 @@ export function Predictions() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Column header for one matchup: both teams, with the winner marked
+ * once the result is in. */
+function MatchupHeader({
+  outcome,
+  managers,
+}: {
+  outcome: { userA: string; userB: string; winnerUserId: string | null; decided: boolean };
+  managers: Record<string, { userId: string; displayName: string }>;
+}) {
+  const label = (userId: string) => {
+    const m = managers[userId];
+    const won = outcome.decided && outcome.winnerUserId === userId;
+    return (
+      <span
+        className={won ? "font-bold" : "text-muted"}
+        style={won ? { color: teamColor(userId) } : undefined}
+      >
+        {m?.displayName ?? "?"}
+        {won ? " ✓" : ""}
+      </span>
+    );
+  };
+  return (
+    <span className="flex flex-col items-center leading-tight">
+      {label(outcome.userA)}
+      <span className="text-[9px] text-muted">v</span>
+      {label(outcome.userB)}
+    </span>
+  );
+}
+
+/** One manager's pick for one matchup. */
+function PickCell({
+  cell,
+  managers,
+}: {
+  cell: { pickedUserId: string | null; correct: boolean | null };
+  managers: Record<string, { userId: string; displayName: string }>;
+}) {
+  if (!cell.pickedUserId) return <span className="text-xs text-muted">—</span>;
+  const name = managers[cell.pickedUserId]?.displayName ?? "?";
+  const tone =
+    cell.correct === null
+      ? "border-line bg-surface-2 text-muted"
+      : cell.correct
+        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+        : "border-red-500/40 bg-red-500/10 text-red-300";
+  return (
+    <span className={`inline-block max-w-[9rem] truncate rounded-md border px-2 py-0.5 text-xs ${tone}`}>
+      {name}
+    </span>
   );
 }
 
