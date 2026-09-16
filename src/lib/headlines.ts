@@ -39,6 +39,86 @@ function getNewcomerIds(history: LeagueHistory, activeIds: Set<string>): Set<str
   return new Set([...activeIds].filter((id) => !seenBefore.has(id)));
 }
 
+
+interface WeekGame {
+  winner: Manager;
+  loser: Manager;
+  winnerPoints: number;
+  loserPoints: number;
+  margin: number;
+}
+
+interface CompletedWeek {
+  week: number;
+  games: WeekGame[];
+  /** Every team's score that week, highest first. */
+  scores: { manager: Manager; points: number }[];
+}
+
+/**
+ * The most recent week of the current season that's actually finished,
+ * with its results resolved to managers.
+ *
+ * "Finished" means every team in that week has a score. A week that's
+ * half-played has real points on the board for the early games, so
+ * taking the latest week with *any* points would produce headlines
+ * mid-Sunday about a week nobody has finished - "lowest score of the
+ * week" being a team whose players haven't kicked off yet.
+ */
+function findLatestCompletedWeek(history: LeagueHistory): CompletedWeek | null {
+  const season = history.seasons[history.seasons.length - 1];
+  if (!season) return null;
+  const rosterToUser = new Map(
+    season.rosters.filter((r) => r.ownerUserId).map((r) => [r.rosterId, r.ownerUserId as string]),
+  );
+
+  const weekNumbers = [...new Set(season.weeks.map((w) => w.week))].sort((a, b) => b - a);
+  for (const week of weekNumbers) {
+    const rows = season.weeks.filter((w) => w.week === week);
+    if (rows.length === 0 || rows.some((r) => r.points <= 0)) continue;
+
+    const byMatchup = new Map<number, typeof rows>();
+    for (const row of rows) {
+      if (row.matchupId === null) continue;
+      const arr = byMatchup.get(row.matchupId) ?? [];
+      arr.push(row);
+      byMatchup.set(row.matchupId, arr);
+    }
+
+    const games: WeekGame[] = [];
+    for (const pair of byMatchup.values()) {
+      if (pair.length !== 2) continue;
+      const [a, b] = pair;
+      if (a.points === b.points) continue; // a tie has no winner to name
+      const userA = rosterToUser.get(a.rosterId);
+      const userB = rosterToUser.get(b.rosterId);
+      const managerA = userA ? history.managers[userA] : undefined;
+      const managerB = userB ? history.managers[userB] : undefined;
+      if (!managerA || !managerB) continue;
+      const aWon = a.points > b.points;
+      games.push({
+        winner: aWon ? managerA : managerB,
+        loser: aWon ? managerB : managerA,
+        winnerPoints: Math.max(a.points, b.points),
+        loserPoints: Math.min(a.points, b.points),
+        margin: Math.abs(a.points - b.points),
+      });
+    }
+
+    const scores = rows
+      .map((r) => {
+        const userId = rosterToUser.get(r.rosterId);
+        const manager = userId ? history.managers[userId] : undefined;
+        return manager ? { manager, points: r.points } : null;
+      })
+      .filter((x): x is { manager: Manager; points: number } => x !== null)
+      .sort((x, y) => y.points - x.points);
+
+    if (games.length > 0) return { week, games, scores };
+  }
+  return null;
+}
+
 /**
  * ESPN-style rotating storylines generated from real league data: draft
  * countdown, a title-defense narrative, hot/cold streaks, championship
@@ -59,6 +139,63 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
     if (usedUserIds.has(manager.userId)) return;
     usedUserIds.add(manager.userId);
     headlines.push({ ...headline, manager });
+  }
+
+  // 0. Last week's results. These lead: once the season is underway,
+  // what actually happened on Sunday is the news, and the preseason
+  // narratives below are the filler around it.
+  const lastWeek = findLatestCompletedWeek(history);
+  if (lastWeek) {
+    const { week, games, scores } = lastWeek;
+    const top = scores[0];
+    const bottom = scores[scores.length - 1];
+    const blowout = [...games].sort((a, b) => b.margin - a.margin)[0];
+    const closest = [...games].sort((a, b) => a.margin - b.margin)[0];
+    // Highest scorer who still lost - only counts as a story if the
+    // week actually produced one.
+    const unlucky = [...games]
+      .filter((g) => g.loserPoints > 0)
+      .sort((a, b) => b.loserPoints - a.loserPoints)[0];
+
+    if (top && isActive(top.manager)) {
+      pushFor(top.manager, {
+        tag: `WEEK ${week} HIGH`,
+        text: `${top.manager.displayName} led the league with ${top.points.toFixed(1)} in week ${week}.`,
+        subhead: "Nobody else got close.",
+      });
+    }
+    if (blowout && isActive(blowout.winner)) {
+      pushFor(blowout.winner, {
+        tag: "BLOWOUT",
+        text: `${blowout.winner.displayName} beat ${blowout.loser.displayName} by ${blowout.margin.toFixed(1)}.`,
+        subhead: `Week ${week}'s most lopsided result.`,
+      });
+    }
+    if (closest && closest !== blowout && isActive(closest.winner)) {
+      pushFor(closest.winner, {
+        tag: "NAIL-BITER",
+        text: `${closest.winner.displayName} edged ${closest.loser.displayName} by ${closest.margin.toFixed(1)}.`,
+        subhead: `The closest game of week ${week}.`,
+      });
+    }
+    // Only newsworthy if they'd have beaten someone else - otherwise
+    // it's just "the loser scored points".
+    if (unlucky && unlucky.loserPoints > (scores[Math.floor(scores.length / 2)]?.points ?? 0)) {
+      if (isActive(unlucky.loser)) {
+        pushFor(unlucky.loser, {
+          tag: "TOUGH LUCK",
+          text: `${unlucky.loser.displayName} scored ${unlucky.loserPoints.toFixed(1)} and still lost.`,
+          subhead: "Right week, wrong opponent.",
+        });
+      }
+    }
+    if (bottom && bottom !== top && isActive(bottom.manager)) {
+      pushFor(bottom.manager, {
+        tag: "ROUGH WEEK",
+        text: `${bottom.manager.displayName} managed just ${bottom.points.toFixed(1)} in week ${week}.`,
+        subhead: "The lineup needs a look.",
+      });
+    }
   }
 
   // 1. Draft countdown (not about a specific manager)
@@ -89,17 +226,26 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
       if (c.champion?.userId === reigning.userId) streakTitles++;
       else break;
     }
-    const nextSeason = Number(champions[0].season) + 1;
+    const titleSeason = Number(champions[0].season);
+    const nextSeason = titleSeason + 1;
+    // "enters 2026 as the defending champ" only reads right before a ball
+    // is snapped. Once there are results on the board it's stale, so the
+    // wording switches to the present tense.
+    const seasonUnderway = lastWeek !== null;
     if (streakTitles >= 2) {
       pushFor(reigning, {
         tag: "TITLE DEFENSE",
-        text: `${reigning.displayName} is chasing a ${ordinal(streakTitles + 1)} straight title in ${nextSeason}.`,
+        text: seasonUnderway
+          ? `${reigning.displayName} is defending ${streakTitles} straight titles.`
+          : `${reigning.displayName} is chasing a ${ordinal(streakTitles + 1)} straight title in ${nextSeason}.`,
         subhead: "Can anyone stop the run?",
       });
     } else {
       pushFor(reigning, {
         tag: "TITLE DEFENSE",
-        text: `${reigning.displayName} enters ${nextSeason} as the defending champ.`,
+        text: seasonUnderway
+          ? `${reigning.displayName} is defending the ${titleSeason} title.`
+          : `${reigning.displayName} enters ${nextSeason} as the defending champ.`,
         subhead: "Can they run it back?",
       });
     }
