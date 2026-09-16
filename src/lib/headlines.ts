@@ -40,6 +40,29 @@ function getNewcomerIds(history: LeagueHistory, activeIds: Set<string>): Set<str
 }
 
 
+
+/**
+ * Deterministic pick from a list of phrasings.
+ *
+ * Deliberately not random: the ticker re-renders as it rotates and on
+ * every data refresh, and a random pick would mean the same headline
+ * re-words itself while you're reading it. Seeding on the week and the
+ * manager keeps a given week's copy fixed, while still giving different
+ * managers different lines and changing them all next week.
+ */
+function pickVariant<T>(variants: T[], seedText: string, week: number): T {
+  // FNV-1a over the id, then the week folded in afterwards. Seeding with
+  // the week up front instead let the id dominate, and one manager drew
+  // the same phrasing four weeks running.
+  let hash = 2166136261;
+  for (let i = 0; i < seedText.length; i++) {
+    hash = Math.imul(hash ^ seedText.charCodeAt(i), 16777619) >>> 0;
+  }
+  hash = Math.imul(hash ^ week, 16777619) >>> 0;
+  hash ^= hash >>> 13; // avalanche, so neighbouring weeks don't cluster
+  return variants[(hash >>> 0) % variants.length];
+}
+
 interface WeekGame {
   winner: Manager;
   loser: Manager;
@@ -158,43 +181,143 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
       .sort((a, b) => b.loserPoints - a.loserPoints)[0];
 
     if (top && isActive(top.manager)) {
-      pushFor(top.manager, {
-        tag: `WEEK ${week} HIGH`,
-        text: `${top.manager.displayName} led the league with ${top.points.toFixed(1)} in week ${week}.`,
-        subhead: "Nobody else got close.",
-      });
+      const pts = top.points.toFixed(1);
+      pushFor(
+        top.manager,
+        pickVariant(
+          [
+            {
+              tag: "SHOWING OFF",
+              text: `${top.manager.displayName} hung ${pts} on the league.`,
+              subhead: "Screenshots have already been taken.",
+            },
+            {
+              tag: `WEEK ${week} HIGH`,
+              text: `${top.manager.displayName} dropped ${pts} and wants everyone to know it.`,
+              subhead: "The group chat has gone very quiet.",
+            },
+            {
+              tag: "TOP SCORE",
+              text: `Nobody outscored ${top.manager.displayName}'s ${pts} in week ${week}.`,
+              subhead: "Enjoy it while it lasts.",
+            },
+          ],
+          top.manager.userId,
+          week,
+        ),
+      );
     }
     if (blowout && isActive(blowout.winner)) {
-      pushFor(blowout.winner, {
-        tag: "BLOWOUT",
-        text: `${blowout.winner.displayName} beat ${blowout.loser.displayName} by ${blowout.margin.toFixed(1)}.`,
-        subhead: `Week ${week}'s most lopsided result.`,
-      });
+      const margin = blowout.margin.toFixed(1);
+      pushFor(
+        blowout.winner,
+        pickVariant(
+          [
+            {
+              tag: "BLOWOUT",
+              text: `${blowout.winner.displayName} put ${margin} on ${blowout.loser.displayName} and never looked back.`,
+              subhead: "That wasn't a matchup, it was a formality.",
+            },
+            {
+              tag: "NOT CLOSE",
+              text: `${blowout.winner.displayName} beat ${blowout.loser.displayName} by ${margin}.`,
+              subhead: `Week ${week}'s designated bloodbath.`,
+            },
+            {
+              tag: "LOPSIDED",
+              text: `${blowout.loser.displayName} lost to ${blowout.winner.displayName} by ${margin}.`,
+              subhead: "Some weeks you just don't show up.",
+            },
+          ],
+          blowout.winner.userId,
+          week,
+        ),
+      );
     }
     if (closest && closest !== blowout && isActive(closest.winner)) {
-      pushFor(closest.winner, {
-        tag: "NAIL-BITER",
-        text: `${closest.winner.displayName} edged ${closest.loser.displayName} by ${closest.margin.toFixed(1)}.`,
-        subhead: `The closest game of week ${week}.`,
-      });
+      const margin = closest.margin.toFixed(1);
+      pushFor(
+        closest.winner,
+        pickVariant(
+          [
+            {
+              tag: "NAIL-BITER",
+              text: `${closest.winner.displayName} survived ${closest.loser.displayName} by ${margin}.`,
+              subhead: "Somebody check their blood pressure.",
+            },
+            {
+              tag: "BY A HAIR",
+              text: `${margin} points separated ${closest.winner.displayName} and ${closest.loser.displayName}.`,
+              subhead: `${closest.loser.displayName} will be rewatching that one all week.`,
+            },
+            {
+              tag: "PHOTO FINISH",
+              text: `${closest.winner.displayName} edged ${closest.loser.displayName} by ${margin}.`,
+              subhead: "One kicker away from a very different mood.",
+            },
+          ],
+          closest.winner.userId,
+          week,
+        ),
+      );
     }
     // Only newsworthy if they'd have beaten someone else - otherwise
     // it's just "the loser scored points".
     if (unlucky && unlucky.loserPoints > (scores[Math.floor(scores.length / 2)]?.points ?? 0)) {
       if (isActive(unlucky.loser)) {
-        pushFor(unlucky.loser, {
-          tag: "TOUGH LUCK",
-          text: `${unlucky.loser.displayName} scored ${unlucky.loserPoints.toFixed(1)} and still lost.`,
-          subhead: "Right week, wrong opponent.",
-        });
+        const pts = unlucky.loserPoints.toFixed(1);
+        pushFor(
+          unlucky.loser,
+          pickVariant(
+            [
+              {
+                tag: "TOUGH LUCK",
+                text: `${unlucky.loser.displayName} scored ${pts} and lost anyway.`,
+                subhead: "Schedule luck remains undefeated.",
+              },
+              {
+                tag: "ROBBED",
+                text: `${pts} would have beaten most of the league. ${unlucky.loser.displayName} drew the one team it wouldn't.`,
+                subhead: "Feel free to complain about it.",
+              },
+              {
+                tag: "WRONG WEEK",
+                text: `${unlucky.loser.displayName} put up ${pts} and got absolutely nothing for it.`,
+                subhead: "Cruel sport, this.",
+              },
+            ],
+            unlucky.loser.userId,
+            week,
+          ),
+        );
       }
     }
     if (bottom && bottom !== top && isActive(bottom.manager)) {
-      pushFor(bottom.manager, {
-        tag: "ROUGH WEEK",
-        text: `${bottom.manager.displayName} managed just ${bottom.points.toFixed(1)} in week ${week}.`,
-        subhead: "The lineup needs a look.",
-      });
+      const pts = bottom.points.toFixed(1);
+      pushFor(
+        bottom.manager,
+        pickVariant(
+          [
+            {
+              tag: "ROUGH WEEK",
+              text: `${bottom.manager.displayName} managed ${pts} in week ${week}.`,
+              subhead: "The waiver wire is open, and calling.",
+            },
+            {
+              tag: "YIKES",
+              text: `${bottom.manager.displayName} scored ${pts}. League low, comfortably.`,
+              subhead: "Let's generously call it a building year.",
+            },
+            {
+              tag: "NO SHOW",
+              text: `${pts}. That's what ${bottom.manager.displayName}'s entire roster produced.`,
+              subhead: "Somebody check if they set a lineup.",
+            },
+          ],
+          bottom.manager.userId,
+          week,
+        ),
+      );
     }
   }
 
