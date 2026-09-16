@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
@@ -6,11 +6,15 @@ import { computeEloRatings, getEloLeaderboard, winProbability } from "../lib/elo
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
-import { FightCard } from "../components/FightCard";
+import { PlayoffOddsPanel } from "../components/PlayoffOddsPanel";
+import type { Manager } from "../lib/history";
 import { Sparkline } from "../components/Sparkline";
 import { useNflState } from "../lib/useNflState";
 
 export function Elo() {
+  // Playoff odds used to be their own tab; they live here now, behind a
+  // toggle, since both views answer "how good is each team right now".
+  const [view, setView] = useState<"elo" | "odds">("elo");
   const { data, loading, error } = useLeagueHistory();
   const { state: nflState } = useNflState();
   const targetWeek = nflState?.week ?? null;
@@ -98,6 +102,31 @@ export function Elo() {
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setView("elo")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+            view === "elo" ? "bg-neon text-ink" : "bg-surface-2 text-body hover:bg-line"
+          }`}
+        >
+          Elo Ratings
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("odds")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+            view === "odds" ? "bg-neon text-ink" : "bg-surface-2 text-body hover:bg-line"
+          }`}
+        >
+          Playoff Odds
+        </button>
+      </div>
+
+      {view === "odds" ? (
+        <PlayoffOddsPanel />
+      ) : (
+        <>
       <div>
         <h1 className="text-2xl font-bold text-primary sm:text-3xl">Elo</h1>
         <p className="mt-1 text-sm text-muted">
@@ -119,20 +148,7 @@ export function Elo() {
           </div>
           <div className="divide-y divide-line">
             {upcomingMatchups.map((m, i) => (
-              <FightCard
-                key={i}
-                centerLabel="Win probability"
-                left={{
-                  manager: m.managerA,
-                  headline: `${(m.probA * 100).toFixed(0)}%`,
-                  winner: m.probA >= 0.5,
-                }}
-                right={{
-                  manager: m.managerB,
-                  headline: `${((1 - m.probA) * 100).toFixed(0)}%`,
-                  winner: m.probA < 0.5,
-                }}
-              />
+              <MatchupOdds key={i} matchup={m} />
             ))}
           </div>
         </div>
@@ -202,6 +218,77 @@ export function Elo() {
           <ScoreTrendChart data={chartData} series={series} xKey="label" yLabel="Elo rating" />
         </div>
       )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One week's matchup as a single compact row: both teams either side of a
+ * split bar showing the Elo win probability. Replaced the full-width
+ * FightCard here - six of those made the page a wall of avatars and
+ * gradients when all you want is to scan the week's odds.
+ */
+function MatchupOdds({
+  matchup,
+}: {
+  matchup: { managerA: Manager; managerB: Manager; probA: number };
+}) {
+  const { managerA, managerB, probA } = matchup;
+  const pctA = Math.round(probA * 100);
+  const colorA = teamColor(managerA.userId);
+  const colorB = teamColor(managerB.userId);
+  const aFavoured = probA >= 0.5;
+
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 sm:gap-3 sm:px-5">
+      <Link
+        to={`/manager/${managerA.userId}`}
+        className="flex min-w-0 flex-1 items-center gap-2 hover:underline"
+      >
+        <span className="hidden sm:block">
+          <TeamBadge userId={managerA.userId} displayName={managerA.displayName} size={22} />
+        </span>
+        <span
+          className={`truncate text-sm ${aFavoured ? "font-semibold" : "text-body"}`}
+          style={aFavoured ? { color: colorA } : undefined}
+        >
+          {managerA.displayName}
+        </span>
+      </Link>
+
+      <span
+        className="w-9 shrink-0 text-right text-xs font-bold tabular-nums"
+        style={{ color: colorA }}
+      >
+        {pctA}%
+      </span>
+      <div className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-full sm:w-28">
+        <div style={{ width: `${pctA}%`, background: colorA }} />
+        <div style={{ width: `${100 - pctA}%`, background: colorB }} />
+      </div>
+      <span
+        className="w-9 shrink-0 text-left text-xs font-bold tabular-nums"
+        style={{ color: colorB }}
+      >
+        {100 - pctA}%
+      </span>
+
+      <Link
+        to={`/manager/${managerB.userId}`}
+        className="flex min-w-0 flex-1 items-center justify-end gap-2 hover:underline"
+      >
+        <span
+          className={`truncate text-right text-sm ${!aFavoured ? "font-semibold" : "text-body"}`}
+          style={!aFavoured ? { color: colorB } : undefined}
+        >
+          {managerB.displayName}
+        </span>
+        <span className="hidden sm:block">
+          <TeamBadge userId={managerB.userId} displayName={managerB.displayName} size={22} />
+        </span>
+      </Link>
     </div>
   );
 }

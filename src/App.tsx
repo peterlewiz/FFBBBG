@@ -25,8 +25,8 @@ const Predictions = lazy(() =>
 const ManagerDetail = lazy(() =>
   import("./pages/ManagerDetail").then((m) => ({ default: m.ManagerDetail })),
 );
-const PlayoffOdds = lazy(() =>
-  import("./pages/PlayoffOdds").then((m) => ({ default: m.PlayoffOdds })),
+const ShadyCorner = lazy(() =>
+  import("./pages/ShadyCorner").then((m) => ({ default: m.ShadyCorner })),
 );
 // Deliberately not in Layout's navItems - unlisted, reachable only by
 // typing the URL directly. See src/pages/DraftAssistant.tsx.
@@ -42,9 +42,9 @@ function App() {
         <Route path="history" element={<History />} />
         <Route path="elo" element={<Elo />} />
         <Route path="predictions" element={<Predictions />} />
-        <Route path="shady-corner" element={<PlayoffOdds />} />
-        {/* Former path, kept so existing links don't dead-end. */}
-        <Route path="playoff-odds" element={<Navigate to="/shady-corner" replace />} />
+        <Route path="shady-corner" element={<ShadyCorner />} />
+        {/* Playoff odds moved onto the Elo page - keep the old path alive. */}
+        <Route path="playoff-odds" element={<Navigate to="/elo" replace />} />
         <Route path="manager/:userId" element={<ManagerDetail />} />
         {/* Graphs was removed. Without this a bookmarked /graphs renders
             a blank page, since there's no catch-all route. */}

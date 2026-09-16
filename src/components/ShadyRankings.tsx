@@ -15,7 +15,7 @@ import type { Manager } from "../lib/history";
 // keeps the editor out of the way of casual visitors, it is not access
 // control. The table's RLS policies are public-write regardless, matching
 // the rest of the site - see supabase/schema.sql.
-const PASSPHRASE = "Makepetersteamhigher";
+const PASSPHRASE = "Peterthegoat";
 const UNLOCK_KEY = "sleeper-site:shady-unlocked";
 
 function Delta({ value }: { value: number | null }) {
