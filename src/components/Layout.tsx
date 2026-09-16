@@ -8,7 +8,7 @@ import { LoadingScreen } from "./StatusScreen";
 const navItems = [
   { to: "/", label: "Home", end: true },
   { to: "/predictions", label: "Predictions" },
-  { to: "/playoff-odds", label: "Playoff Odds" },
+  { to: "/shady-corner", label: "Shady Corner" },
   { to: "/history", label: "History" },
   { to: "/elo", label: "Elo" },
 ];

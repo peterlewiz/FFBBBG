@@ -93,3 +93,35 @@ create policy "public insert" on fantasypros_cache
 
 create policy "public update" on fantasypros_cache
   for update using (true) with check (true);
+
+-- Hand-made weekly power rankings for the Shady Corner page. One row per
+-- team per week, `rank` 1 = top. Stored per week rather than overwritten
+-- so the page can show how far each team moved since last week, the same
+-- way playoff_odds_snapshots does.
+create table if not exists power_rankings (
+  id uuid primary key default gen_random_uuid(),
+  league_id text not null,
+  season text not null,
+  week int not null,
+  user_id text not null,
+  rank int not null,
+  note text,
+  updated_at timestamptz not null default now(),
+  unique (league_id, season, week, user_id)
+);
+
+alter table power_rankings enable row level security;
+
+-- Same public read/write trade-off as the rest of this schema. The page
+-- asks for a passphrase before showing the editor, but that check runs in
+-- the browser and the passphrase ships in the JS bundle - it keeps casual
+-- visitors out of the editing UI, it is NOT access control. Anyone who
+-- wants to write here can do so directly against this table.
+create policy "public read" on power_rankings
+  for select using (true);
+
+create policy "public insert" on power_rankings
+  for insert with check (true);
+
+create policy "public update" on power_rankings
+  for update using (true) with check (true);
