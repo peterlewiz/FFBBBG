@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { TeamBadge } from "./TeamBadge";
 import { teamColor } from "../lib/teamColors";
-import { isSupabaseConfigured } from "../lib/supabaseClient";
+import { isSupabaseConfigured, supabaseUrl } from "../lib/supabaseClient";
 import {
   fetchRankings,
   formatForDiscord,
   rankedWeeks,
   rankingForWeek,
   saveRankings,
+  SETUP_SQL,
   type PowerRankingRow,
+  type RankingEntry,
 } from "../lib/shadyRankings";
 import type { Manager } from "../lib/history";
 
@@ -18,6 +20,9 @@ import type { Manager } from "../lib/history";
 // the rest of the site - see supabase/schema.sql.
 const PASSPHRASE = "Peterthegoat";
 const UNLOCK_KEY = "sleeper-site:shady-unlocked";
+// Long enough for a real dig, short enough that a Discord post of twelve
+// of them still reads as a ranking rather than an essay.
+const NOTE_MAX = 280;
 
 function Delta({ value }: { value: number | null }) {
   if (value === null) return <span className="text-[11px] text-muted">new</span>;
@@ -28,6 +33,57 @@ function Delta({ value }: { value: number | null }) {
       {up ? "▲" : "▼"}
       {Math.abs(value)}
     </span>
+  );
+}
+
+/**
+ * Shown to whoever unlocked the editor when the table doesn't exist yet.
+ * Nothing in the app can create it - the browser only holds the anon key,
+ * which has no DDL rights - so the one useful thing to do is hand over
+ * the SQL and a link to the place it runs.
+ */
+function SetupNotice() {
+  const [copied, setCopied] = useState(false);
+  // https://<ref>.supabase.co -> the dashboard's SQL editor for that project.
+  const projectRef = supabaseUrl ? new URL(supabaseUrl).hostname.split(".")[0] : null;
+
+  async function copySql() {
+    try {
+      await navigator.clipboard.writeText(SETUP_SQL);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("Copy this SQL:", SETUP_SQL);
+    }
+  }
+
+  return (
+    <div className="border-b border-line bg-amber-500/10 px-5 py-4">
+      <p className="text-sm font-semibold text-amber-300">One-time setup needed</p>
+      <p className="mt-1 text-xs text-body">
+        Rankings can't save until the <code className="text-amber-200">power_rankings</code> table
+        exists. Copy the SQL, run it in the Supabase SQL editor, then reload this page.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={copySql}
+          className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/30"
+        >
+          {copied ? "Copied" : "Copy setup SQL"}
+        </button>
+        {projectRef && (
+          <a
+            href={`https://supabase.com/dashboard/project/${projectRef}/sql/new`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-body hover:bg-surface-2"
+          >
+            Open SQL editor ↗
+          </a>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -43,6 +99,7 @@ export function ShadyRankings({
   managers: Manager[];
 }) {
   const [rows, setRows] = useState<PowerRankingRow[]>([]);
+  const [tableMissing, setTableMissing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +108,7 @@ export function ShadyRankings({
   const [attemptFailed, setAttemptFailed] = useState(false);
 
   const [viewWeek, setViewWeek] = useState<number | null>(null);
-  const [draft, setDraft] = useState<string[] | null>(null);
+  const [draft, setDraft] = useState<RankingEntry[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -70,7 +127,12 @@ export function ShadyRankings({
       return;
     }
     fetchRankings(leagueId, season)
-      .then((r) => !cancelled && (setRows(r), setLoading(false)))
+      .then((result) => {
+        if (cancelled) return;
+        setRows(result.rows);
+        setTableMissing(result.tableMissing);
+        setLoading(false);
+      })
       .catch((e: unknown) => {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Couldn't load rankings");
@@ -123,11 +185,15 @@ export function ShadyRankings({
     }
   }
 
-  /** Seed the editor from whatever's already ranked, then append anyone
-   * missing so a new team can't be silently dropped from the list. */
+  /** Seed the editor from whatever's already ranked - order and write-ups
+   * both - then append anyone missing so a new team can't be silently
+   * dropped from the list. */
   function startEditing() {
-    const seeded = ranking.map((r) => r.userId);
-    const missing = managers.map((m) => m.userId).filter((id) => !seeded.includes(id));
+    const seeded: RankingEntry[] = ranking.map((r) => ({ userId: r.userId, note: r.note ?? "" }));
+    const seededIds = new Set(seeded.map((e) => e.userId));
+    const missing = managers
+      .filter((m) => !seededIds.has(m.userId))
+      .map((m) => ({ userId: m.userId, note: "" }));
     setDraft([...seeded, ...missing]);
   }
 
@@ -142,17 +208,26 @@ export function ShadyRankings({
     });
   }
 
+  function setNote(index: number, note: string) {
+    setDraft((prev) => prev?.map((entry, i) => (i === index ? { ...entry, note } : entry)) ?? prev);
+  }
+
   async function save() {
     if (!draft || week === null) return;
     setSaving(true);
     setError(null);
     try {
       await saveRankings(leagueId, season, week, draft);
-      setRows(await fetchRankings(leagueId, season));
+      const result = await fetchRankings(leagueId, season);
+      setRows(result.rows);
+      setTableMissing(result.tableMissing);
       setViewWeek(week);
       setDraft(null);
     } catch (e) {
+      // Keep the draft on screen - a failed save shouldn't cost you the
+      // ordering and the write-ups you just typed out.
       setError(e instanceof Error ? e.message : "Couldn't save rankings");
+      setTableMissing(true);
     } finally {
       setSaving(false);
     }
@@ -179,7 +254,7 @@ export function ShadyRankings({
           <button
             type="button"
             onClick={copyForDiscord}
-            title="Copy this week's rankings, formatted to line up in Discord"
+            title="Copy this week's rankings, formatted for Discord"
             className="ml-auto rounded-lg bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/30"
           >
             {copied ? "Copied" : "Copy for Discord"}
@@ -202,51 +277,69 @@ export function ShadyRankings({
         )}
       </div>
 
-      {error && (
-        <p className="border-b border-line px-5 py-2 text-sm text-red-400">{error}</p>
-      )}
+      {error && <p className="border-b border-line px-5 py-2 text-sm text-red-400">{error}</p>}
+      {unlocked && tableMissing && <SetupNotice />}
 
       {loading ? (
         <p className="px-5 py-4 text-sm text-muted">Loading rankings…</p>
       ) : draft ? (
         <div className="p-5">
           <p className="mb-3 text-xs text-muted">
-            Ordering week {week} (the last completed week). Top of the list is #1.
+            Ordering week {week} (the last completed week). Top of the list is #1, and every write-up
+            is optional.
           </p>
-          <ol className="flex flex-col gap-1">
-            {draft.map((userId, i) => {
-              const m = byUserId.get(userId);
+          <ol className="flex flex-col gap-2">
+            {draft.map((entry, i) => {
+              const m = byUserId.get(entry.userId);
               return (
                 <li
-                  key={userId}
-                  className="flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2"
+                  key={entry.userId}
+                  className="rounded-lg border border-line bg-surface-2 px-3 py-2"
                 >
-                  <span className="w-6 shrink-0 text-center text-sm font-bold text-muted">
-                    {i + 1}
-                  </span>
-                  <TeamBadge userId={userId} displayName={m?.displayName ?? userId} size={22} />
-                  <span
-                    className="flex-1 truncate text-sm font-medium"
-                    style={{ color: teamColor(userId) }}
-                  >
-                    {m?.displayName ?? userId}
-                  </span>
-                  <button
-                    onClick={() => move(i, -1)}
-                    disabled={i === 0}
-                    aria-label="Move up"
-                    className="rounded px-2 py-0.5 text-sm text-body hover:bg-line disabled:opacity-30"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={() => move(i, 1)}
-                    disabled={i === draft.length - 1}
-                    aria-label="Move down"
-                    className="rounded px-2 py-0.5 text-sm text-body hover:bg-line disabled:opacity-30"
-                  >
-                    ▼
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 shrink-0 text-center text-sm font-bold text-muted">
+                      {i + 1}
+                    </span>
+                    <TeamBadge
+                      userId={entry.userId}
+                      displayName={m?.displayName ?? entry.userId}
+                      size={22}
+                    />
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm font-medium"
+                      style={{ color: teamColor(entry.userId) }}
+                    >
+                      {m?.displayName ?? entry.userId}
+                    </span>
+                    <button
+                      onClick={() => move(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move up"
+                      className="rounded px-2 py-0.5 text-sm text-body hover:bg-line disabled:opacity-30"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => move(i, 1)}
+                      disabled={i === draft.length - 1}
+                      aria-label="Move down"
+                      className="rounded px-2 py-0.5 text-sm text-body hover:bg-line disabled:opacity-30"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <textarea
+                    value={entry.note}
+                    onChange={(e) => setNote(i, e.target.value)}
+                    maxLength={NOTE_MAX}
+                    rows={2}
+                    placeholder={`Why is ${m?.displayName ?? "this team"} here?`}
+                    aria-label={`Write-up for ${m?.displayName ?? entry.userId}`}
+                    className="mt-2 w-full resize-y rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary placeholder:text-muted"
+                  />
+                  <div className="mt-0.5 text-right text-[10px] text-muted">
+                    {entry.note.length}/{NOTE_MAX}
+                  </div>
                 </li>
               );
             })}
@@ -276,16 +369,30 @@ export function ShadyRankings({
               {ranking.map((r) => {
                 const m = byUserId.get(r.userId);
                 return (
-                  <li key={r.userId} className="flex items-center gap-3 px-5 py-2.5">
-                    <span className="w-6 text-center text-sm font-bold text-muted">{r.rank}</span>
-                    <TeamBadge userId={r.userId} displayName={m?.displayName ?? r.userId} size={22} />
-                    <span
-                      className="flex-1 truncate text-sm font-medium"
-                      style={{ color: teamColor(r.userId) }}
-                    >
-                      {m?.displayName ?? r.userId}
-                    </span>
-                    <Delta value={r.delta} />
+                  <li key={r.userId} className="px-5 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 text-center text-sm font-bold text-muted">{r.rank}</span>
+                      <TeamBadge
+                        userId={r.userId}
+                        displayName={m?.displayName ?? r.userId}
+                        size={22}
+                      />
+                      <span
+                        className="min-w-0 flex-1 truncate text-sm font-medium"
+                        style={{ color: teamColor(r.userId) }}
+                      >
+                        {m?.displayName ?? r.userId}
+                      </span>
+                      <Delta value={r.delta} />
+                    </div>
+                    {r.note && (
+                      // Indented to line up with the name, not the rank
+                      // number, so the column of write-ups reads as one
+                      // block down the page.
+                      <p className="mt-1 pl-[3.1rem] pr-2 text-xs leading-relaxed text-body">
+                        {r.note}
+                      </p>
+                    )}
                   </li>
                 );
               })}
