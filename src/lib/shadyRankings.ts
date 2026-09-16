@@ -9,6 +9,22 @@ export interface PowerRankingRow {
   note?: string | null;
 }
 
+/**
+ * True when the failure is just "this table hasn't been created yet"
+ * (PostgREST reports it as PGRST205 / a schema-cache miss) rather than
+ * something actually wrong. Worth distinguishing: until the SQL in
+ * supabase/schema.sql is run, reading is *expected* to fail, and
+ * showing a raw Postgres string for it is only noise.
+ */
+export function isMissingTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.code === "PGRST205" ||
+    (error.message ?? "").includes("power_rankings") ||
+    (error.message ?? "").includes("schema cache")
+  );
+}
+
 export async function fetchRankings(leagueId: string, season: string): Promise<PowerRankingRow[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
@@ -16,7 +32,12 @@ export async function fetchRankings(leagueId: string, season: string): Promise<P
     .select("*")
     .eq("league_id", leagueId)
     .eq("season", season);
-  if (error) throw new Error(error.message);
+  // No table yet reads the same as no rankings yet - the page shows
+  // "No rankings posted yet" rather than a database error.
+  if (error) {
+    if (isMissingTableError(error)) return [];
+    throw new Error(error.message);
+  }
   return data ?? [];
 }
 
@@ -45,7 +66,15 @@ export async function saveRankings(
       rows.map((r) => ({ ...r, updated_at: new Date().toISOString() })),
       { onConflict: "league_id,season,week,user_id" },
     );
-  if (error) throw new Error(error.message);
+  // Saving is the moment the missing table actually matters, so say
+  // something useful here rather than passing the Postgres text through.
+  if (error) {
+    throw new Error(
+      isMissingTableError(error)
+        ? "Rankings can't save yet - the power_rankings table still needs creating in Supabase (see supabase/schema.sql)."
+        : error.message,
+    );
+  }
 }
 
 /** Weeks that have a saved ranking, most recent first. */
