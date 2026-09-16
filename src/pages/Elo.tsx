@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
-import { computeEloRatings, getEloLeaderboard, winProbability } from "../lib/elo";
+import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
+import { computeSeasonForm, seasonWinProbability } from "../lib/seasonForm";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
@@ -60,8 +61,15 @@ export function Elo() {
     return out;
   }, [eloResult]);
 
+  // This season's scoring only - no Elo, and nothing carried over from
+  // previous seasons.
+  const seasonForm = useMemo(
+    () => computeSeasonForm(data ? (data.seasons[data.seasons.length - 1] ?? null) : null, targetWeek),
+    [data, targetWeek],
+  );
+
   const upcomingMatchups = useMemo(() => {
-    if (!data || !eloResult || targetWeek === null) return [];
+    if (!data || targetWeek === null) return [];
     const currentSeason = data.seasons[data.seasons.length - 1];
     if (!currentSeason || currentSeason.weeks.length === 0) return [];
 
@@ -86,22 +94,49 @@ export function Elo() {
         const userA = rosterToUser.get(a.rosterId);
         const userB = rosterToUser.get(b.rosterId);
         if (!userA || !userB) return null;
-        const ratingA = eloResult.ratings[userA] ?? 1500;
-        const ratingB = eloResult.ratings[userB] ?? 1500;
+        const formA = seasonForm.byUserId[userA];
+        const formB = seasonForm.byUserId[userB];
+        // Nothing played yet this season means nothing to base a
+        // probability on - better to show no section than a coin flip
+        // dressed up as analysis.
+        if (!formA || !formB) return null;
         return {
           managerA: data.managers[userA],
           managerB: data.managers[userB],
-          probA: winProbability(ratingA, ratingB),
+          probA: seasonWinProbability(formA.meanPoints, formB.meanPoints, seasonForm.weeklySd),
+          meanA: formA.meanPoints,
+          meanB: formB.meanPoints,
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [data, eloResult, targetWeek]);
+  }, [data, seasonForm, targetWeek]);
 
   if (loading) return <LoadingScreen />;
   if (error || !data) return <ErrorScreen message={error ?? "Unknown error"} />;
 
   return (
     <div className="flex flex-col gap-6">
+      {upcomingMatchups.length > 0 && (
+        <div className="rounded-2xl border border-line bg-surface shadow-sm">
+          <div className="border-b border-line px-5 py-4">
+            <h2 className="text-lg font-semibold text-primary">
+              Win Probability — Week {targetWeek}
+            </h2>
+            <p className="text-xs text-muted">
+              From this season&apos;s scoring only ({seasonForm.weeksCounted.length}{" "}
+              {seasonForm.weeksCounted.length === 1 ? "week" : "weeks"} played
+              {seasonForm.sdMeasured ? "" : ", spread assumed until there's more to measure"}).
+              Independent of Elo and of previous seasons.
+            </p>
+          </div>
+          <div className="divide-y divide-line">
+            {upcomingMatchups.map((m, i) => (
+              <MatchupOdds key={i} matchup={m} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -138,21 +173,6 @@ export function Elo() {
           tab to make your own picks for the week.
         </p>
       </div>
-
-      {upcomingMatchups.length > 0 && (
-        <div className="rounded-2xl border border-line bg-surface shadow-sm">
-          <div className="border-b border-line px-5 py-4">
-            <h2 className="text-lg font-semibold text-primary">
-              Elo Win Probability — Week {targetWeek}
-            </h2>
-          </div>
-          <div className="divide-y divide-line">
-            {upcomingMatchups.map((m, i) => (
-              <MatchupOdds key={i} matchup={m} />
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="rounded-2xl border border-line bg-surface shadow-sm">
         <div className="border-b border-line px-5 py-4">
