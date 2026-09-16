@@ -4,6 +4,7 @@ import { teamColor } from "../lib/teamColors";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
 import {
   fetchRankings,
+  formatForDiscord,
   rankedWeeks,
   rankingForWeek,
   saveRankings,
@@ -52,6 +53,7 @@ export function ShadyRankings({
   const [viewWeek, setViewWeek] = useState<number | null>(null);
   const [draft, setDraft] = useState<string[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     try {
@@ -86,6 +88,25 @@ export function ShadyRankings({
     [rows, shownWeek],
   );
   const byUserId = useMemo(() => new Map(managers.map((m) => [m.userId, m])), [managers]);
+
+  async function copyForDiscord() {
+    if (shownWeek === null) return;
+    const text = formatForDiscord(
+      ranking,
+      (userId) => byUserId.get(userId)?.displayName ?? userId,
+      shownWeek,
+    );
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard API needs a secure context and permission; fall back to
+      // a selectable prompt rather than failing silently.
+      window.prompt("Copy this into Discord:", text);
+      return;
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
 
   function unlock() {
     if (attempt.trim() !== PASSPHRASE) {
@@ -154,11 +175,23 @@ export function ShadyRankings({
             Posted after each completed week. Arrows show the move since the last ranked week.
           </p>
         </div>
+        {ranking.length > 0 && (
+          <button
+            type="button"
+            onClick={copyForDiscord}
+            title="Copy this week's rankings, formatted to line up in Discord"
+            className="ml-auto rounded-lg bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/30"
+          >
+            {copied ? "Copied" : "Copy for Discord"}
+          </button>
+        )}
         {weeks.length > 0 && (
           <select
             value={shownWeek ?? ""}
             onChange={(e) => setViewWeek(Number(e.target.value))}
-            className="ml-auto rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary"
+            className={`rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary ${
+              ranking.length > 0 ? "" : "ml-auto"
+            }`}
           >
             {weeks.map((w) => (
               <option key={w} value={w}>

@@ -115,3 +115,44 @@ export function rankingForWeek(rows: PowerRankingRow[], week: number): RankedTea
     };
   });
 }
+
+/**
+ * A week's rankings as text to paste into Discord.
+ *
+ * The table goes inside a fenced code block on purpose: Discord renders
+ * those in a monospace font, which is the only way the rank, name and
+ * movement columns actually line up. In normal proportional text the
+ * columns drift and it reads like a ransom note. The title sits outside
+ * the block so it still renders bold.
+ */
+export function formatForDiscord(
+  ranking: RankedTeam[],
+  displayNameFor: (userId: string) => string,
+  week: number,
+): string {
+  if (ranking.length === 0) return "";
+
+  const rows = ranking.map((r) => ({
+    rank: String(r.rank),
+    name: displayNameFor(r.userId),
+    // Movement is the last column, so arrows can't knock the rank and
+    // name columns out of alignment even if a font renders them wide.
+    move:
+      r.delta === null
+        ? "NEW"
+        : r.delta === 0
+          ? "-"
+          : r.delta > 0
+            ? `▲${r.delta}`
+            : `▼${Math.abs(r.delta)}`,
+  }));
+
+  const rankWidth = Math.max(...rows.map((r) => r.rank.length));
+  const nameWidth = Math.max(...rows.map((r) => r.name.length));
+
+  const body = rows
+    .map((r) => `${r.rank.padStart(rankWidth)}  ${r.name.padEnd(nameWidth)}  ${r.move}`)
+    .join("\n");
+
+  return [`**Shady's Power Rankings - Week ${week}**`, "```", body, "```"].join("\n");
+}
