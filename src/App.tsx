@@ -1,11 +1,11 @@
 import { lazy } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 
 /*
  * Pages are code-split so the initial load only pays for what it shows.
- * Recharts is by far the heaviest dependency and only Graphs, Elo and
+ * Recharts is by far the heaviest dependency and only Elo and
  * ManagerDetail need it, so Home no longer downloads it. Layout stays
  * eager - it's the shell every route renders inside.
  *
@@ -18,7 +18,6 @@ import { Home } from "./pages/Home";
  * Going straight to SkeletonHome removes that stage.
  */
 const History = lazy(() => import("./pages/History").then((m) => ({ default: m.History })));
-const Graphs = lazy(() => import("./pages/Graphs").then((m) => ({ default: m.Graphs })));
 const Elo = lazy(() => import("./pages/Elo").then((m) => ({ default: m.Elo })));
 const Predictions = lazy(() =>
   import("./pages/Predictions").then((m) => ({ default: m.Predictions })),
@@ -41,11 +40,13 @@ function App() {
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="history" element={<History />} />
-        <Route path="graphs" element={<Graphs />} />
         <Route path="elo" element={<Elo />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="playoff-odds" element={<PlayoffOdds />} />
         <Route path="manager/:userId" element={<ManagerDetail />} />
+        {/* Graphs was removed. Without this a bookmarked /graphs renders
+            a blank page, since there's no catch-all route. */}
+        <Route path="graphs" element={<Navigate to="/" replace />} />
         <Route path="draft" element={<DraftAssistant />} />
       </Route>
     </Routes>

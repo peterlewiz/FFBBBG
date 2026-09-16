@@ -10,7 +10,6 @@ const navItems = [
   { to: "/predictions", label: "Predictions" },
   { to: "/playoff-odds", label: "Playoff Odds" },
   { to: "/history", label: "History" },
-  { to: "/graphs", label: "Graphs" },
   { to: "/elo", label: "Elo" },
 ];
 
