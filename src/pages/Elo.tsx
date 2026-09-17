@@ -5,6 +5,7 @@ import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
 import { computeSeasonForm } from "../lib/seasonForm";
 import { forecastMatchup } from "../lib/matchupForecast";
+import type { PlayerForecast } from "../lib/playerForecast";
 import {
   useLineupForecasts,
   type StarterForecast,
@@ -138,8 +139,9 @@ export function Elo() {
               Win Probability — Week {targetWeek}
             </h2>
             <p className="text-xs text-muted">
-              Every starter projected from their own past games, scored in this league&apos;s
-              rules, then blended with Elo. Tap a matchup for the player-by-player breakdown.
+              Every starter gets two projections — this site&apos;s own model and
+              Sleeper&apos;s — averaged, both scored in this league&apos;s rules, then blended
+              with Elo. Tap a matchup for the player-by-player breakdown.
               {model && model.weeksLearned.length > 0
                 ? ` Using ${model.weeksLearned.length} week${
                     model.weeksLearned.length === 1 ? "" : "s"
@@ -383,13 +385,13 @@ function MatchupBreakdown({
         </div>
       ))}
       <div className="mt-1 flex items-center gap-2 border-t border-line pt-2 text-xs font-semibold">
-        <span className="flex-1 tabular-nums" style={{ color: colorA }}>
+        <span className="flex-1 text-right tabular-nums" style={{ color: colorA }}>
           {lineupA.points.toFixed(1)}
         </span>
         <span className="w-11 shrink-0 text-center text-[10px] uppercase tracking-wide text-muted">
           Total
         </span>
-        <span className="flex-1 text-right tabular-nums" style={{ color: colorB }}>
+        <span className="flex-1 tabular-nums" style={{ color: colorB }}>
           {lineupB.points.toFixed(1)}
         </span>
       </div>
@@ -409,7 +411,7 @@ function StarterCell({
   const right = align === "right";
   if (!starter || starter.name === null) {
     return (
-      <span className={`min-w-0 flex-1 text-amber-400/80 ${right ? "text-right" : ""}`}>
+      <span className={`min-w-0 flex-1 truncate text-amber-400/80 ${right ? "text-right" : ""}`}>
         Empty slot
       </span>
     );
@@ -419,14 +421,16 @@ function StarterCell({
   // thing in this table, so the reason is shown instead of a bare 0.0.
   const tag = f?.onBye ? "BYE" : f?.out ? "OUT" : f?.questionable ? "Q" : null;
 
+  // Names to the outside, scores to the inside, so the two columns of
+  // numbers sit either side of the slot label and can be compared down
+  // the page without reading across a name each time.
   return (
     <span
       className={`flex min-w-0 flex-1 items-baseline gap-1.5 ${right ? "flex-row-reverse" : ""}`}
     >
-      <span className="tabular-nums font-semibold" style={{ color }}>
-        {f ? f.points.toFixed(1) : "—"}
+      <span className={`min-w-0 flex-1 truncate text-body ${right ? "text-right" : ""}`}>
+        {starter.name}
       </span>
-      <span className="min-w-0 truncate text-body">{starter.name}</span>
       {tag && (
         <span
           className={`shrink-0 text-[9px] font-bold ${
@@ -436,6 +440,13 @@ function StarterCell({
           {tag}
         </span>
       )}
+      <span
+        className="shrink-0 tabular-nums font-semibold"
+        style={{ color }}
+        title={f ? sourceBreakdown(f) : undefined}
+      >
+        {f ? f.points.toFixed(1) : "—"}
+      </span>
     </span>
   );
 }
@@ -465,4 +476,16 @@ function LineupNote({
       {reasons.length > 0 && <span className="text-amber-400/80"> · {reasons.join(", ")}</span>}
     </span>
   );
+}
+
+/** The source numbers behind a player's projection, for the tooltip -
+ * worth surfacing because when the two disagree sharply that's usually a
+ * player worth a second look before setting a lineup. */
+function sourceBreakdown(f: PlayerForecast): string {
+  const parts = [
+    f.sources.own !== null ? `model ${f.sources.own.toFixed(1)}` : null,
+    f.sources.sleeper !== null ? `Sleeper ${f.sources.sleeper.toFixed(1)}` : null,
+  ].filter((p): p is string => p !== null);
+  const suffix = f.onBye ? " · on bye" : f.out ? " · ruled out" : f.questionable ? " · questionable, discounted 15%" : "";
+  return parts.join("  ·  ") + suffix;
 }

@@ -1,4 +1,10 @@
-import { getNflSchedule, getSeasonStats, getWeekStats, type SleeperStatLine } from "../api/sleeper";
+import {
+  getNflSchedule,
+  getSeasonStats,
+  getWeeklyProjections,
+  getWeekStats,
+  type SleeperStatLine,
+} from "../api/sleeper";
 import { cacheGet, cacheSet } from "../api/cache";
 import type { DraftPlayer, FantasyPosition } from "./players";
 
@@ -51,8 +57,19 @@ export function scoreStatLine(stats: SleeperStatLine, scoring: Record<string, nu
   return points;
 }
 
+/** The two independent reads that make up a player's number. Sleeper's
+ * is null for anyone it doesn't expect to play. */
+export interface ForecastSources {
+  /** This app's own model: past games, scored in league rules. */
+  own: number | null;
+  /** Sleeper's weekly projection, re-scored in league rules. */
+  sleeper: number | null;
+}
+
 export interface PlayerForecast {
   points: number;
+  /** What each source said before they were averaged. */
+  sources: ForecastSources;
   /** Games of this season that fed the estimate. */
   gamesUsed: number;
   /** Where the number mostly came from, for explaining it in the UI. */
@@ -167,9 +184,10 @@ export async function buildForecastModel({
   );
   keep.add("gp");
 
-  const [priorSeason, schedule, ...weekStats] = await Promise.all([
+  const [priorSeason, schedule, sleeperProjections, ...weekStats] = await Promise.all([
     cachedSeasonStats(previousSeason, keep),
     cachedSchedule(season),
+    cachedSleeperProjections(season, targetWeek, scoring),
     ...completedWeeks.map((week) => cachedWeekStats(season, week, keep)),
   ]);
 
@@ -216,14 +234,26 @@ export async function buildForecastModel({
     weighted += baseline * BASELINE_WEIGHT_GAMES;
     weight += BASELINE_WEIGHT_GAMES;
 
-    const raw = weight > 0 ? weighted / weight : baseline;
+    const own = weight > 0 ? weighted / weight : baseline;
     const basis = gamesUsed > 0 ? "form" : prior !== undefined ? "prior" : "baseline";
+
+    const sources: ForecastSources = {
+      own,
+      sleeper: sleeperProjections.get(player.id) ?? null,
+    };
+
+    // A straight average of whatever covers this player. The two lean
+    // opposite ways - the model is backward-looking, built from games
+    // already played, while Sleeper's projection is a forward read on
+    // this week - so averaging stops either one being wrong on its own.
+    const available = [sources.own, sources.sleeper].filter((v): v is number => v !== null);
+    const raw = available.length > 0 ? available.reduce((a, b) => a + b, 0) / available.length : 0;
 
     let points = raw;
     if (onBye || out) points = 0;
     else if (questionable) points = raw * QUESTIONABLE_FACTOR;
 
-    return { points, gamesUsed, basis, onBye, out, questionable };
+    return { points, sources, gamesUsed, basis, onBye, out, questionable };
   }
 
   return { predict, targetWeek, weeksLearned: completedWeeks, byeTeams };
@@ -311,4 +341,36 @@ async function cachedSchedule(season: string) {
   const data = await getNflSchedule(season).catch(() => []);
   cacheSet(key, data, SEASON_TTL_MS);
   return data;
+}
+
+/**
+ * Sleeper's weekly projections, scored in this league's rules and
+ * reduced to one number per player before caching - the raw payload is
+ * about two megabytes of stat lines, nearly all of it irrelevant here.
+ *
+ * Cached for three hours rather than a day: unlike a finished week's
+ * results, a projection moves during the week as news lands.
+ */
+const PROJECTION_TTL_MS = 3 * 60 * 60 * 1000;
+
+async function cachedSleeperProjections(
+  season: string,
+  week: number,
+  scoring: Record<string, number>,
+): Promise<Map<string, number>> {
+  const key = `proj:sleeper:${season}:${week}:v1`;
+  const hit = cacheGet<Record<string, number>>(key);
+  if (hit) return new Map(Object.entries(hit));
+
+  const raw = await getWeeklyProjections(season, week).catch(() => []);
+  const scored: Record<string, number> = {};
+  for (const entry of raw) {
+    if (!entry.stats) continue;
+    // Sleeper lists every player, most with nothing but an ADP field.
+    // Only a real projected line is a projection.
+    if (typeof entry.stats.pts_half_ppr !== "number") continue;
+    scored[entry.player_id] = scoreStatLine(entry.stats, scoring);
+  }
+  cacheSet(key, scored, PROJECTION_TTL_MS);
+  return new Map(Object.entries(scored));
 }

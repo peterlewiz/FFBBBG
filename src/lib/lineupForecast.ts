@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getLeague, getLeagueRosters } from "../api/sleeper";
+import { getLeague, getLeagueRosters, getMatchups } from "../api/sleeper";
 import { loadDraftPlayerPool } from "./players";
 import { buildForecastModel, type ForecastModel, type PlayerForecast } from "./playerForecast";
 
@@ -50,8 +50,16 @@ export function useLineupForecasts(leagueId: string, targetWeek: number | null):
     let cancelled = false;
     if (targetWeek === null) return;
 
-    Promise.all([getLeague(leagueId), getLeagueRosters(leagueId), loadDraftPlayerPool()])
-      .then(async ([league, rosters, pool]) => {
+    Promise.all([
+      getLeague(leagueId),
+      getLeagueRosters(leagueId),
+      loadDraftPlayerPool(),
+      // The week's lineups come from the matchup rows, not the roster
+      // rows - see SleeperMatchup.starters. Missing (a week Sleeper
+      // hasn't created yet) falls back to the roster's lineup.
+      getMatchups(leagueId, targetWeek).catch(() => []),
+    ])
+      .then(async ([league, rosters, pool, matchups]) => {
         if (cancelled) return;
         const model = await buildForecastModel({
           season: league.season,
@@ -65,9 +73,15 @@ export function useLineupForecasts(leagueId: string, targetWeek: number | null):
         const slots = (league.roster_positions ?? []).filter((p) => p !== "BN");
         const byUserId: Record<string, TeamLineupForecast> = {};
 
+        const weekStarters = new Map(
+          matchups
+            .filter((m) => m.starters && m.starters.length > 0)
+            .map((m) => [m.roster_id, m.starters as string[]]),
+        );
+
         for (const roster of rosters) {
           if (!roster.owner_id) continue;
-          const starterIds = roster.starters ?? [];
+          const starterIds = weekStarters.get(roster.roster_id) ?? roster.starters ?? [];
           let points = 0;
           let onBye = 0;
           let out = 0;

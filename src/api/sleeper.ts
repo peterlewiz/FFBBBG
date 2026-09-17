@@ -143,3 +143,30 @@ export async function getNflSchedule(season: string): Promise<SleeperScheduleGam
   if (!res.ok) throw new Error(`Sleeper schedule request failed (${res.status})`);
   return res.json() as Promise<SleeperScheduleGame[]>;
 }
+
+/** One player's projected stat line for a week, from Sleeper's own
+ * projections. `stats` uses the same stat codes as real results, so a
+ * projection can be scored in a league's own rules rather than taken as
+ * Sleeper's generic pts_half_ppr. */
+export interface SleeperProjection {
+  player_id: string;
+  stats: Record<string, number> | null;
+}
+
+/**
+ * Sleeper's weekly projections. Not under /v1, and needs every position
+ * listed explicitly or it returns only the default set.
+ */
+export async function getWeeklyProjections(
+  season: string,
+  week: number,
+): Promise<SleeperProjection[]> {
+  const positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
+    .map((p) => `position[]=${p}`)
+    .join("&");
+  const res = await fetch(
+    `https://api.sleeper.com/projections/nfl/${season}/${week}?season_type=regular&${positions}&order_by=ppr`,
+  );
+  if (!res.ok) throw new Error(`Sleeper projections request failed (${res.status})`);
+  return res.json() as Promise<SleeperProjection[]>;
+}

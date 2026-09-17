@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getLeague, getLeagueRosters } from "../api/sleeper";
+import { getLeague, getLeagueRosters, getMatchups } from "../api/sleeper";
 import { loadDraftPlayerPool, type DraftPlayer } from "./players";
 
 export interface RosterSlot {
@@ -34,7 +34,7 @@ export interface TeamRostersState {
  * what lets each starting slot be labelled QB/RB/FLEX/etc rather than
  * just listed.
  */
-export function useTeamRosters(leagueId: string): TeamRostersState {
+export function useTeamRosters(leagueId: string, week?: number | null): TeamRostersState {
   const [state, setState] = useState<TeamRostersState>({
     rosters: [],
     loading: true,
@@ -44,8 +44,16 @@ export function useTeamRosters(leagueId: string): TeamRostersState {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getLeague(leagueId), getLeagueRosters(leagueId), loadDraftPlayerPool()])
-      .then(([league, rosters, pool]) => {
+    Promise.all([
+      getLeague(leagueId),
+      getLeagueRosters(leagueId),
+      loadDraftPlayerPool(),
+      // A week's real lineup lives on its matchup row, not on the
+      // roster - see SleeperMatchup.starters. Without this a slot the
+      // manager has filled for the week can still read as empty.
+      week ? getMatchups(leagueId, week).catch(() => []) : Promise.resolve([]),
+    ])
+      .then(([league, rosters, pool, matchups]) => {
         if (cancelled) return;
         const byId = new Map(pool.map((p) => [p.id, p]));
         // "0" is Sleeper's empty-slot marker, not a player id.
@@ -55,12 +63,17 @@ export function useTeamRosters(leagueId: string): TeamRostersState {
             : { slot, player: byId.get(id) ?? null, playerId: id };
 
         const startingSlots = (league.roster_positions ?? []).filter((p) => p !== "BN");
+        const weekStarters = new Map(
+          matchups
+            .filter((m) => m.starters && m.starters.length > 0)
+            .map((m) => [m.roster_id, m.starters as string[]]),
+        );
 
         setState({
           loading: false,
           error: null,
           rosters: rosters.map((r) => {
-            const starterIds = r.starters ?? [];
+            const starterIds = weekStarters.get(r.roster_id) ?? r.starters ?? [];
             const starters = startingSlots.map((slot, i) => toSlot(slot, starterIds[i]));
             const startingSet = new Set(starterIds.filter((id) => id && id !== "0"));
             const bench = (r.players ?? [])
@@ -90,7 +103,7 @@ export function useTeamRosters(leagueId: string): TeamRostersState {
     return () => {
       cancelled = true;
     };
-  }, [leagueId]);
+  }, [leagueId, week]);
 
   return state;
 }

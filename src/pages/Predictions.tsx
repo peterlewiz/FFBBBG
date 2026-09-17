@@ -65,7 +65,7 @@ export function Predictions() {
   const predictionsState = usePredictions(ROOT_LEAGUE_ID);
 
   const { state: nflState, error: nflStateError } = useNflState();
-  const rostersState = useTeamRosters(ROOT_LEAGUE_ID);
+  const rostersState = useTeamRosters(ROOT_LEAGUE_ID, nflState?.week ?? null);
 
   const [pickerUserId, setPickerUserId] = useState<string | null>(() =>
     typeof window !== "undefined" ? window.localStorage.getItem(PICKER_STORAGE_KEY) : null,

@@ -107,6 +107,17 @@ export interface SleeperMatchup {
   roster_id: number;
   matchup_id: number | null;
   points: number;
+  /** The lineup this roster has set *for this week*, aligned with the
+   * league's roster_positions minus BN, "0" for an empty slot.
+   *
+   * This - not SleeperRoster.starters - is what a team is actually
+   * starting in a given week. The roster endpoint carries a single
+   * lineup that does not track the week you care about: verified live,
+   * a manager with Brock Bowers set at TE for week 2 showed "0" in that
+   * slot on /rosters while /matchups/2 had him correctly. */
+  starters?: string[] | null;
+  /** Per-player points for the week, keyed by player id. */
+  players_points?: Record<string, number> | null;
 }
 
 // One entry in the winners bracket. `p` is the placement decided by this
