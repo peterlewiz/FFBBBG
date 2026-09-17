@@ -5,8 +5,11 @@ import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
 import { computeSeasonForm } from "../lib/seasonForm";
 import { forecastMatchup } from "../lib/matchupForecast";
-import { projectStarters, type LineupProjection } from "../lib/lineupProjection";
-import { useTeamRosters } from "../lib/useTeamRosters";
+import {
+  useLineupForecasts,
+  type StarterForecast,
+  type TeamLineupForecast,
+} from "../lib/lineupForecast";
 import { winProbability } from "../lib/elo";
 import { ROOT_LEAGUE_ID } from "../lib/history";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
@@ -25,7 +28,7 @@ export function Elo() {
   const { state: nflState } = useNflState();
   const targetWeek = nflState?.week ?? null;
 
-  const { rosters } = useTeamRosters(ROOT_LEAGUE_ID);
+  const { byUserId: lineupByUser, model } = useLineupForecasts(ROOT_LEAGUE_ID, targetWeek);
 
   const eloResult = useMemo(() => (data ? computeEloRatings(data) : null), [data]);
   const leaderboard = useMemo(
@@ -74,18 +77,6 @@ export function Elo() {
     () => computeSeasonForm(data ? (data.seasons[data.seasons.length - 1] ?? null) : null, targetWeek),
     [data, targetWeek],
   );
-
-  // Each team's projected points for the upcoming week, from the lineup
-  // they currently have set.
-  const lineupByUser = useMemo(() => {
-    const out: Record<string, LineupProjection> = {};
-    if (targetWeek === null) return out;
-    for (const roster of rosters) {
-      if (!roster.ownerUserId) continue;
-      out[roster.ownerUserId] = projectStarters(roster.starters, targetWeek);
-    }
-    return out;
-  }, [rosters, targetWeek]);
 
   const upcomingMatchups = useMemo(() => {
     if (!data || targetWeek === null || !eloResult) return [];
@@ -147,9 +138,13 @@ export function Elo() {
               Win Probability — Week {targetWeek}
             </h2>
             <p className="text-xs text-muted">
-              Projected points from each team&apos;s current starting lineup — byes and ruled-out
-              players removed — blended with Elo
-              {seasonForm.sdMeasured ? "" : " (weekly spread assumed until there's more to measure)"}.
+              Every starter projected from their own past games, scored in this league&apos;s
+              rules, then blended with Elo. Tap a matchup for the player-by-player breakdown.
+              {model && model.weeksLearned.length > 0
+                ? ` Using ${model.weeksLearned.length} week${
+                    model.weeksLearned.length === 1 ? "" : "s"
+                  } of this season plus last season's form.`
+                : " Based on last season's form until this one has games in it."}
             </p>
           </div>
           <div className="divide-y divide-line">
@@ -268,10 +263,10 @@ export function Elo() {
 }
 
 /**
- * One week's matchup as a single compact row: both teams either side of a
- * split bar showing the Elo win probability. Replaced the full-width
- * FightCard here - six of those made the page a wall of avatars and
- * gradients when all you want is to scan the week's odds.
+ * One week's matchup as a compact row, expanding on click into the
+ * player-by-player projection behind it. Collapsed by default: six open
+ * breakdowns is a wall of numbers, and most of the time the question is
+ * just "who's favoured".
  */
 function MatchupOdds({
   matchup,
@@ -282,10 +277,11 @@ function MatchupOdds({
     probA: number;
     pointsA: number;
     pointsB: number;
-    lineupA: LineupProjection;
-    lineupB: LineupProjection;
+    lineupA: TeamLineupForecast;
+    lineupB: TeamLineupForecast;
   };
 }) {
+  const [open, setOpen] = useState(false);
   const { managerA, managerB, probA, pointsA, pointsB, lineupA, lineupB } = matchup;
   const pctA = Math.round(probA * 100);
   const colorA = teamColor(managerA.userId);
@@ -293,83 +289,171 @@ function MatchupOdds({
   const aFavoured = probA >= 0.5;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 sm:gap-3 sm:px-5">
-      <Link
-        to={`/manager/${managerA.userId}`}
-        className="flex min-w-0 flex-1 items-center gap-2 hover:underline"
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-surface-2 sm:gap-3 sm:px-5"
       >
-        <span className="hidden sm:block">
-          <TeamBadge userId={managerA.userId} displayName={managerA.displayName} size={22} />
-        </span>
-        <span className="min-w-0">
-          <span
-            className={`block truncate text-sm ${aFavoured ? "font-semibold" : "text-body"}`}
-            style={aFavoured ? { color: colorA } : undefined}
-          >
-            {managerA.displayName}
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="hidden sm:block">
+            <TeamBadge userId={managerA.userId} displayName={managerA.displayName} size={22} />
           </span>
-          <LineupNote projection={lineupA} points={pointsA} />
-        </span>
-      </Link>
-
-      <span
-        className="w-9 shrink-0 text-right text-xs font-bold tabular-nums"
-        style={{ color: colorA }}
-      >
-        {pctA}%
-      </span>
-      <div className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-full sm:w-28">
-        <div style={{ width: `${pctA}%`, background: colorA }} />
-        <div style={{ width: `${100 - pctA}%`, background: colorB }} />
-      </div>
-      <span
-        className="w-9 shrink-0 text-left text-xs font-bold tabular-nums"
-        style={{ color: colorB }}
-      >
-        {100 - pctA}%
-      </span>
-
-      <Link
-        to={`/manager/${managerB.userId}`}
-        className="flex min-w-0 flex-1 items-center justify-end gap-2 hover:underline"
-      >
-        <span className="min-w-0 text-right">
-          <span
-            className={`block truncate text-sm ${!aFavoured ? "font-semibold" : "text-body"}`}
-            style={!aFavoured ? { color: colorB } : undefined}
-          >
-            {managerB.displayName}
+          <span className="min-w-0">
+            <span
+              className={`block truncate text-sm ${aFavoured ? "font-semibold" : "text-body"}`}
+              style={aFavoured ? { color: colorA } : undefined}
+            >
+              {managerA.displayName}
+            </span>
+            <LineupNote lineup={lineupA} points={pointsA} />
           </span>
-          <LineupNote projection={lineupB} points={pointsB} align="right" />
         </span>
-        <span className="hidden sm:block">
-          <TeamBadge userId={managerB.userId} displayName={managerB.displayName} size={22} />
+
+        <span
+          className="w-9 shrink-0 text-right text-xs font-bold tabular-nums"
+          style={{ color: colorA }}
+        >
+          {pctA}%
         </span>
-      </Link>
+        <span className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-full sm:w-28">
+          <span style={{ width: `${pctA}%`, background: colorA }} />
+          <span style={{ width: `${100 - pctA}%`, background: colorB }} />
+        </span>
+        <span
+          className="w-9 shrink-0 text-left text-xs font-bold tabular-nums"
+          style={{ color: colorB }}
+        >
+          {100 - pctA}%
+        </span>
+
+        <span className="flex min-w-0 flex-1 items-center justify-end gap-2">
+          <span className="min-w-0 text-right">
+            <span
+              className={`block truncate text-sm ${!aFavoured ? "font-semibold" : "text-body"}`}
+              style={!aFavoured ? { color: colorB } : undefined}
+            >
+              {managerB.displayName}
+            </span>
+            <LineupNote lineup={lineupB} points={pointsB} align="right" />
+          </span>
+          <span className="hidden sm:block">
+            <TeamBadge userId={managerB.userId} displayName={managerB.displayName} size={22} />
+          </span>
+        </span>
+        <span aria-hidden className="shrink-0 text-xs text-muted">
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+
+      {open && <MatchupBreakdown lineupA={lineupA} lineupB={lineupB} colorA={colorA} colorB={colorB} />}
     </div>
   );
 }
 
 /**
- * A team's projected total, plus why it's low when it is. A lineup with
- * byes or ruled-out starters in it looks like a bad team otherwise, and
- * the difference matters: one is a judgement about the roster, the other
- * is a manager who hasn't set their lineup yet.
+ * The two lineups slot against slot, each player with the points they're
+ * projected for. Laid out as one row per slot rather than two separate
+ * lists so the comparison people actually make - my RB against theirs -
+ * doesn't need scrolling between two columns.
  */
+function MatchupBreakdown({
+  lineupA,
+  lineupB,
+  colorA,
+  colorB,
+}: {
+  lineupA: TeamLineupForecast;
+  lineupB: TeamLineupForecast;
+  colorA: string;
+  colorB: string;
+}) {
+  const rows = lineupA.starters.map((a, i) => ({ a, b: lineupB.starters[i] ?? null, slot: a.slot }));
+
+  return (
+    <div className="border-t border-line bg-surface-2/40 px-3 py-2 sm:px-5 sm:py-3">
+      {rows.map((row, i) => (
+        <div key={i} className="flex items-center gap-2 py-1 text-xs">
+          <StarterCell starter={row.a} color={colorA} />
+          <span className="w-11 shrink-0 text-center text-[10px] font-semibold uppercase tracking-wide text-muted">
+            {row.slot}
+          </span>
+          <StarterCell starter={row.b} color={colorB} align="right" />
+        </div>
+      ))}
+      <div className="mt-1 flex items-center gap-2 border-t border-line pt-2 text-xs font-semibold">
+        <span className="flex-1 tabular-nums" style={{ color: colorA }}>
+          {lineupA.points.toFixed(1)}
+        </span>
+        <span className="w-11 shrink-0 text-center text-[10px] uppercase tracking-wide text-muted">
+          Total
+        </span>
+        <span className="flex-1 text-right tabular-nums" style={{ color: colorB }}>
+          {lineupB.points.toFixed(1)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function StarterCell({
+  starter,
+  color,
+  align = "left",
+}: {
+  starter: StarterForecast | null;
+  color: string;
+  align?: "left" | "right";
+}) {
+  const right = align === "right";
+  if (!starter || starter.name === null) {
+    return (
+      <span className={`min-w-0 flex-1 text-amber-400/80 ${right ? "text-right" : ""}`}>
+        Empty slot
+      </span>
+    );
+  }
+  const f = starter.forecast;
+  // A starter who scores nothing this week is the single most useful
+  // thing in this table, so the reason is shown instead of a bare 0.0.
+  const tag = f?.onBye ? "BYE" : f?.out ? "OUT" : f?.questionable ? "Q" : null;
+
+  return (
+    <span
+      className={`flex min-w-0 flex-1 items-baseline gap-1.5 ${right ? "flex-row-reverse" : ""}`}
+    >
+      <span className="tabular-nums font-semibold" style={{ color }}>
+        {f ? f.points.toFixed(1) : "—"}
+      </span>
+      <span className="min-w-0 truncate text-body">{starter.name}</span>
+      {tag && (
+        <span
+          className={`shrink-0 text-[9px] font-bold ${
+            tag === "Q" ? "text-amber-400/80" : "text-red-400/80"
+          }`}
+        >
+          {tag}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** A team's projected total, plus why it's low when it is. */
 function LineupNote({
-  projection,
+  lineup,
   points,
   align = "left",
 }: {
-  projection: LineupProjection;
+  lineup: TeamLineupForecast;
   points: number;
   align?: "left" | "right";
 }) {
-  const sitting = projection.onBye.length + projection.out.length;
   const reasons: string[] = [];
-  if (projection.onBye.length > 0) reasons.push(`${projection.onBye.length} on bye`);
-  if (projection.out.length > 0) reasons.push(`${projection.out.length} out`);
-  if (projection.emptySlots > 0) reasons.push(`${projection.emptySlots} empty`);
+  if (lineup.onBye > 0) reasons.push(`${lineup.onBye} on bye`);
+  if (lineup.out > 0) reasons.push(`${lineup.out} out`);
+  if (lineup.emptySlots > 0) reasons.push(`${lineup.emptySlots} empty`);
 
   return (
     <span
@@ -378,9 +462,7 @@ function LineupNote({
       }`}
     >
       {points.toFixed(1)}
-      {reasons.length > 0 && (
-        <span className={sitting > 0 ? "text-amber-400/80" : ""}> · {reasons.join(", ")}</span>
-      )}
+      {reasons.length > 0 && <span className="text-amber-400/80"> · {reasons.join(", ")}</span>}
     </span>
   );
 }

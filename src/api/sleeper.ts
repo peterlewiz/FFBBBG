@@ -104,3 +104,42 @@ export async function getAllMatchupsForSeason(
   );
   return results.filter((r) => r.matchups && r.matchups.length > 0);
 }
+
+/** A player's raw stat line for a week or a whole season - Sleeper's own
+ * stat codes ("pass_yd", "rec", "fgm_40_49", ...), the same keys a
+ * league's scoring_settings is written in, which is what lets a stat
+ * line be scored in this league's exact rules rather than a generic
+ * preset. `gp` is games played, present on season totals. */
+export type SleeperStatLine = Record<string, number>;
+
+/** Season totals per player. One request covers a whole season, where
+ * the per-week endpoint would need eighteen. */
+export function getSeasonStats(season: string): Promise<Record<string, SleeperStatLine>> {
+  return getJson(`/stats/nfl/regular/${season}`);
+}
+
+export function getWeekStats(
+  season: string,
+  week: number,
+): Promise<Record<string, SleeperStatLine>> {
+  return getJson(`/stats/nfl/regular/${season}/${week}`);
+}
+
+export interface SleeperScheduleGame {
+  week: number;
+  home: string;
+  away: string;
+  date: string;
+  status: string;
+}
+
+/**
+ * The NFL season's fixture list. Not under /v1 like everything else.
+ * Used to work out bye weeks: a team that doesn't appear in a week's
+ * fixtures isn't playing that week.
+ */
+export async function getNflSchedule(season: string): Promise<SleeperScheduleGame[]> {
+  const res = await fetch(`https://api.sleeper.app/schedule/nfl/regular/${season}`);
+  if (!res.ok) throw new Error(`Sleeper schedule request failed (${res.status})`);
+  return res.json() as Promise<SleeperScheduleGame[]>;
+}
