@@ -116,6 +116,18 @@ export function ShadyRankings({
     window.setTimeout(() => setCopied(false), 2000);
   }
 
+  /** Drop back to the passphrase prompt, and forget the remembered
+   * unlock so it's actually gated again rather than one reload away. */
+  function lock() {
+    setUnlocked(false);
+    setDraft(null);
+    try {
+      sessionStorage.removeItem(UNLOCK_KEY);
+    } catch {
+      // nothing persisted to clear
+    }
+  }
+
   function unlock() {
     if (attempt.trim() !== PASSPHRASE) {
       setAttemptFailed(true);
@@ -343,13 +355,26 @@ export function ShadyRankings({
 
           <div className="border-t border-line px-5 py-3">
             {unlocked ? (
-              <button
-                onClick={startEditing}
-                disabled={week === null}
-                className="rounded-lg bg-neon/20 px-3 py-1.5 text-xs font-semibold text-neon hover:bg-neon/30 disabled:opacity-50"
-              >
-                {ranking.length === 0 ? "Post" : "Re-rank"} week {week}
-              </button>
+              // The unlock is remembered for the tab, so without this the
+              // passphrase looks like it stopped existing: you return to
+              // the page, the editor is simply open, and there's no sign
+              // it was ever gated or any way back out.
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={startEditing}
+                  disabled={week === null}
+                  className="rounded-lg bg-neon/20 px-3 py-1.5 text-xs font-semibold text-neon hover:bg-neon/30 disabled:opacity-50"
+                >
+                  {ranking.length === 0 ? "Post" : "Re-rank"} week {week}
+                </button>
+                <span className="text-xs text-muted">🔓 Editing unlocked</span>
+                <button
+                  onClick={lock}
+                  className="ml-auto rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-body hover:bg-surface-2"
+                >
+                  Lock
+                </button>
+              </div>
             ) : (
               // A real form rather than a keydown handler, so Enter
               // submits natively - a bare onKeyDown didn't reliably fire
