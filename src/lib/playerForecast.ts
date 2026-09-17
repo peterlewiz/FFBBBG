@@ -70,6 +70,11 @@ export interface PlayerForecast {
   points: number;
   /** What each source said before they were averaged. */
   sources: ForecastSources;
+  /** Sleeper's designation and what it's for - "Questionable",
+   * "Hamstring" - so a flag on the page can be checked rather than
+   * taken on trust. */
+  injuryStatus: string | null;
+  injuryBodyPart: string | null;
   /** Games of this season that fed the estimate. */
   gamesUsed: number;
   /** Where the number mostly came from, for explaining it in the UI. */
@@ -209,9 +214,20 @@ export async function buildForecastModel({
   const byeTeams = byeTeamsForWeek(schedule, targetWeek, players);
 
   function predict(player: DraftPlayer): PlayerForecast {
+    const projection = sleeperProjections.get(player.id) ?? null;
     const onBye = player.team !== null && byeTeams.includes(player.team);
-    const out = !!player.injuryStatus && OUT_STATUSES.has(player.injuryStatus);
-    const questionable = player.injuryStatus === "Questionable";
+    // Injury status comes from the projections feed whenever that feed
+    // knows the player at all - including when it reports no injury.
+    //
+    // Falling back to the player pool on a null would defeat the point:
+    // the pool is cached for a day, and a tag that has since been lifted
+    // is exactly the stale value being corrected here. Seen live -
+    // players listed Out yesterday and Questionable today still showed
+    // OUT, and scored 0.0, for anyone holding a day-old cache.
+    const injuryStatus = projection ? projection.injuryStatus : player.injuryStatus;
+    const injuryBodyPart = projection?.injuryBodyPart ?? null;
+    const out = !!injuryStatus && OUT_STATUSES.has(injuryStatus);
+    const questionable = injuryStatus === "Questionable";
     const baseline = baselines[player.position] ?? FALLBACK_BASELINE[player.position] ?? 0;
 
     let weighted = 0;
@@ -237,23 +253,35 @@ export async function buildForecastModel({
     const own = weight > 0 ? weighted / weight : baseline;
     const basis = gamesUsed > 0 ? "form" : prior !== undefined ? "prior" : "baseline";
 
-    const sources: ForecastSources = {
-      own,
-      sleeper: sleeperProjections.get(player.id) ?? null,
-    };
+    const sources: ForecastSources = { own, sleeper: projection?.points ?? null };
+
+    // The questionable discount is applied to the model only, never to
+    // Sleeper's projection. The model is built from games this player
+    // played healthy and knows nothing about the injury, so it needs the
+    // haircut; Sleeper's number is a forward projection made with the
+    // injury already known, so discounting it too would charge the same
+    // player twice for the same hamstring.
+    const ownAdjusted =
+      own !== null && questionable ? own * QUESTIONABLE_FACTOR : own;
 
     // A straight average of whatever covers this player. The two lean
     // opposite ways - the model is backward-looking, built from games
     // already played, while Sleeper's projection is a forward read on
     // this week - so averaging stops either one being wrong on its own.
-    const available = [sources.own, sources.sleeper].filter((v): v is number => v !== null);
+    const available = [ownAdjusted, sources.sleeper].filter((v): v is number => v !== null);
     const raw = available.length > 0 ? available.reduce((a, b) => a + b, 0) / available.length : 0;
 
-    let points = raw;
-    if (onBye || out) points = 0;
-    else if (questionable) points = raw * QUESTIONABLE_FACTOR;
-
-    return { points, sources, gamesUsed, basis, onBye, out, questionable };
+    return {
+      points: onBye || out ? 0 : raw,
+      sources,
+      injuryStatus,
+      injuryBodyPart,
+      gamesUsed,
+      basis,
+      onBye,
+      out,
+      questionable,
+    };
   }
 
   return { predict, targetWeek, weeksLearned: completedWeeks, byeTeams };
@@ -353,24 +381,39 @@ async function cachedSchedule(season: string) {
  */
 const PROJECTION_TTL_MS = 3 * 60 * 60 * 1000;
 
+export interface ProjectionEntry {
+  points: number | null;
+  injuryStatus: string | null;
+  injuryBodyPart: string | null;
+}
+
 async function cachedSleeperProjections(
   season: string,
   week: number,
   scoring: Record<string, number>,
-): Promise<Map<string, number>> {
-  const key = `proj:sleeper:${season}:${week}:v1`;
-  const hit = cacheGet<Record<string, number>>(key);
+): Promise<Map<string, ProjectionEntry>> {
+  const key = `proj:sleeper:${season}:${week}:v2`;
+  const hit = cacheGet<Record<string, ProjectionEntry>>(key);
   if (hit) return new Map(Object.entries(hit));
 
   const raw = await getWeeklyProjections(season, week).catch(() => []);
-  const scored: Record<string, number> = {};
+  const out: Record<string, ProjectionEntry> = {};
   for (const entry of raw) {
-    if (!entry.stats) continue;
     // Sleeper lists every player, most with nothing but an ADP field.
-    // Only a real projected line is a projection.
-    if (typeof entry.stats.pts_half_ppr !== "number") continue;
-    scored[entry.player_id] = scoreStatLine(entry.stats, scoring);
+    // Only a real projected line is a projection - but an injury
+    // designation is worth keeping either way.
+    const points =
+      entry.stats && typeof entry.stats.pts_half_ppr === "number"
+        ? scoreStatLine(entry.stats, scoring)
+        : null;
+    const injuryStatus = entry.player?.injury_status ?? null;
+    if (points === null && injuryStatus === null) continue;
+    out[entry.player_id] = {
+      points,
+      injuryStatus,
+      injuryBodyPart: entry.player?.injury_body_part ?? null,
+    };
   }
-  cacheSet(key, scored, PROJECTION_TTL_MS);
-  return new Map(Object.entries(scored));
+  cacheSet(key, out, PROJECTION_TTL_MS);
+  return new Map(Object.entries(out));
 }

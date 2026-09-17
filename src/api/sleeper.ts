@@ -151,6 +151,12 @@ export async function getNflSchedule(season: string): Promise<SleeperScheduleGam
 export interface SleeperProjection {
   player_id: string;
   stats: Record<string, number> | null;
+  /** Carries a fresher injury designation than /players/nfl does in
+   * practice, and unlike that 15MB blob this can be refetched often. */
+  player?: {
+    injury_status?: string | null;
+    injury_body_part?: string | null;
+  } | null;
 }
 
 /**

@@ -433,6 +433,7 @@ function StarterCell({
       </span>
       {tag && (
         <span
+          title={[f?.injuryStatus, f?.injuryBodyPart].filter(Boolean).join(" — ") || undefined}
           className={`shrink-0 text-[9px] font-bold ${
             tag === "Q" ? "text-amber-400/80" : "text-red-400/80"
           }`}
@@ -486,6 +487,13 @@ function sourceBreakdown(f: PlayerForecast): string {
     f.sources.own !== null ? `model ${f.sources.own.toFixed(1)}` : null,
     f.sources.sleeper !== null ? `Sleeper ${f.sources.sleeper.toFixed(1)}` : null,
   ].filter((p): p is string => p !== null);
-  const suffix = f.onBye ? " · on bye" : f.out ? " · ruled out" : f.questionable ? " · questionable, discounted 15%" : "";
+  const injury = [f.injuryStatus, f.injuryBodyPart].filter(Boolean).join(" — ");
+  const suffix = f.onBye
+    ? " · on bye"
+    : f.out
+      ? ` · ${injury || "ruled out"}`
+      : f.questionable
+        ? ` · ${injury} (model discounted 15%; Sleeper's number already prices it in)`
+        : "";
   return parts.join("  ·  ") + suffix;
 }

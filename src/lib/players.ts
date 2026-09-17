@@ -33,8 +33,14 @@ const CAP_PER_POSITION: Record<FantasyPosition, number> = {
 // unmatched players (see mergeExpertRankings/expertRank): `undefined`
 // isn't `null`, so a strict `!== null` check treated a merely-absent
 // field as "has a real expert rank", which the sort could put anywhere.
-const CACHE_KEY = "players:fantasy-relevant:v6";
-// Sleeper asks that this endpoint only be hit about once a day.
+const CACHE_KEY = "players:fantasy-relevant:v7";
+// Sleeper asks that this endpoint only be hit about once a day, and at
+// ~15MB it isn't something to refetch casually. Note that anything on
+// this record which changes intra-day - injury_status above all - is
+// therefore up to a day stale, and must not be the source of truth for
+// a decision. The weekly forecast takes injury designations from
+// Sleeper's projections feed instead (see playerForecast.ts), which is
+// small enough to refresh every few hours.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface DraftPlayer {
