@@ -3,7 +3,12 @@ import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
 import { computeEloRatings, getEloLeaderboard } from "../lib/elo";
-import { computeSeasonForm, seasonWinProbability } from "../lib/seasonForm";
+import { computeSeasonForm } from "../lib/seasonForm";
+import { forecastMatchup } from "../lib/matchupForecast";
+import { projectStarters, type LineupProjection } from "../lib/lineupProjection";
+import { useTeamRosters } from "../lib/useTeamRosters";
+import { winProbability } from "../lib/elo";
+import { ROOT_LEAGUE_ID } from "../lib/history";
 import { ScoreTrendChart, type ChartSeries } from "../components/ScoreTrendChart";
 import { teamColor, teamColorAlpha } from "../lib/teamColors";
 import { TeamBadge } from "../components/TeamBadge";
@@ -19,6 +24,8 @@ export function Elo() {
   const { data, loading, error } = useLeagueHistory();
   const { state: nflState } = useNflState();
   const targetWeek = nflState?.week ?? null;
+
+  const { rosters } = useTeamRosters(ROOT_LEAGUE_ID);
 
   const eloResult = useMemo(() => (data ? computeEloRatings(data) : null), [data]);
   const leaderboard = useMemo(
@@ -68,8 +75,20 @@ export function Elo() {
     [data, targetWeek],
   );
 
+  // Each team's projected points for the upcoming week, from the lineup
+  // they currently have set.
+  const lineupByUser = useMemo(() => {
+    const out: Record<string, LineupProjection> = {};
+    if (targetWeek === null) return out;
+    for (const roster of rosters) {
+      if (!roster.ownerUserId) continue;
+      out[roster.ownerUserId] = projectStarters(roster.starters, targetWeek);
+    }
+    return out;
+  }, [rosters, targetWeek]);
+
   const upcomingMatchups = useMemo(() => {
-    if (!data || targetWeek === null) return [];
+    if (!data || targetWeek === null || !eloResult) return [];
     const currentSeason = data.seasons[data.seasons.length - 1];
     if (!currentSeason || currentSeason.weeks.length === 0) return [];
 
@@ -94,22 +113,27 @@ export function Elo() {
         const userA = rosterToUser.get(a.rosterId);
         const userB = rosterToUser.get(b.rosterId);
         if (!userA || !userB) return null;
-        const formA = seasonForm.byUserId[userA];
-        const formB = seasonForm.byUserId[userB];
-        // Nothing played yet this season means nothing to base a
-        // probability on - better to show no section than a coin flip
-        // dressed up as analysis.
-        if (!formA || !formB) return null;
+        const lineupA = lineupByUser[userA];
+        const lineupB = lineupByUser[userB];
+        // Lineups are the larger half of the estimate, so until they've
+        // loaded there's nothing to show but an Elo number dressed up as
+        // a forecast - better to wait than to publish a different answer
+        // for a second.
+        if (!lineupA || !lineupB) return null;
+        const eloProbA = winProbability(
+          eloResult.ratings[userA] ?? 1500,
+          eloResult.ratings[userB] ?? 1500,
+        );
         return {
           managerA: data.managers[userA],
           managerB: data.managers[userB],
-          probA: seasonWinProbability(formA.meanPoints, formB.meanPoints, seasonForm.weeklySd),
-          meanA: formA.meanPoints,
-          meanB: formB.meanPoints,
+          lineupA,
+          lineupB,
+          ...forecastMatchup(lineupA.points, lineupB.points, eloProbA, seasonForm.weeklySd),
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [data, seasonForm, targetWeek]);
+  }, [data, eloResult, lineupByUser, seasonForm.weeklySd, targetWeek]);
 
   if (loading) return <LoadingScreen />;
   if (error || !data) return <ErrorScreen message={error ?? "Unknown error"} />;
@@ -123,10 +147,9 @@ export function Elo() {
               Win Probability — Week {targetWeek}
             </h2>
             <p className="text-xs text-muted">
-              From this season&apos;s scoring only ({seasonForm.weeksCounted.length}{" "}
-              {seasonForm.weeksCounted.length === 1 ? "week" : "weeks"} played
-              {seasonForm.sdMeasured ? "" : ", spread assumed until there's more to measure"}).
-              Independent of Elo and of previous seasons.
+              Projected points from each team&apos;s current starting lineup — byes and ruled-out
+              players removed — blended with Elo
+              {seasonForm.sdMeasured ? "" : " (weekly spread assumed until there's more to measure)"}.
             </p>
           </div>
           <div className="divide-y divide-line">
@@ -253,9 +276,17 @@ export function Elo() {
 function MatchupOdds({
   matchup,
 }: {
-  matchup: { managerA: Manager; managerB: Manager; probA: number };
+  matchup: {
+    managerA: Manager;
+    managerB: Manager;
+    probA: number;
+    pointsA: number;
+    pointsB: number;
+    lineupA: LineupProjection;
+    lineupB: LineupProjection;
+  };
 }) {
-  const { managerA, managerB, probA } = matchup;
+  const { managerA, managerB, probA, pointsA, pointsB, lineupA, lineupB } = matchup;
   const pctA = Math.round(probA * 100);
   const colorA = teamColor(managerA.userId);
   const colorB = teamColor(managerB.userId);
@@ -270,11 +301,14 @@ function MatchupOdds({
         <span className="hidden sm:block">
           <TeamBadge userId={managerA.userId} displayName={managerA.displayName} size={22} />
         </span>
-        <span
-          className={`truncate text-sm ${aFavoured ? "font-semibold" : "text-body"}`}
-          style={aFavoured ? { color: colorA } : undefined}
-        >
-          {managerA.displayName}
+        <span className="min-w-0">
+          <span
+            className={`block truncate text-sm ${aFavoured ? "font-semibold" : "text-body"}`}
+            style={aFavoured ? { color: colorA } : undefined}
+          >
+            {managerA.displayName}
+          </span>
+          <LineupNote projection={lineupA} points={pointsA} />
         </span>
       </Link>
 
@@ -299,16 +333,54 @@ function MatchupOdds({
         to={`/manager/${managerB.userId}`}
         className="flex min-w-0 flex-1 items-center justify-end gap-2 hover:underline"
       >
-        <span
-          className={`truncate text-right text-sm ${!aFavoured ? "font-semibold" : "text-body"}`}
-          style={!aFavoured ? { color: colorB } : undefined}
-        >
-          {managerB.displayName}
+        <span className="min-w-0 text-right">
+          <span
+            className={`block truncate text-sm ${!aFavoured ? "font-semibold" : "text-body"}`}
+            style={!aFavoured ? { color: colorB } : undefined}
+          >
+            {managerB.displayName}
+          </span>
+          <LineupNote projection={lineupB} points={pointsB} align="right" />
         </span>
         <span className="hidden sm:block">
           <TeamBadge userId={managerB.userId} displayName={managerB.displayName} size={22} />
         </span>
       </Link>
     </div>
+  );
+}
+
+/**
+ * A team's projected total, plus why it's low when it is. A lineup with
+ * byes or ruled-out starters in it looks like a bad team otherwise, and
+ * the difference matters: one is a judgement about the roster, the other
+ * is a manager who hasn't set their lineup yet.
+ */
+function LineupNote({
+  projection,
+  points,
+  align = "left",
+}: {
+  projection: LineupProjection;
+  points: number;
+  align?: "left" | "right";
+}) {
+  const sitting = projection.onBye.length + projection.out.length;
+  const reasons: string[] = [];
+  if (projection.onBye.length > 0) reasons.push(`${projection.onBye.length} on bye`);
+  if (projection.out.length > 0) reasons.push(`${projection.out.length} out`);
+  if (projection.emptySlots > 0) reasons.push(`${projection.emptySlots} empty`);
+
+  return (
+    <span
+      className={`block truncate text-[11px] tabular-nums text-muted ${
+        align === "right" ? "text-right" : ""
+      }`}
+    >
+      {points.toFixed(1)}
+      {reasons.length > 0 && (
+        <span className={sitting > 0 ? "text-amber-400/80" : ""}> · {reasons.join(", ")}</span>
+      )}
+    </span>
   );
 }

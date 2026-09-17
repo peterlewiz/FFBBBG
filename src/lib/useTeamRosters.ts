@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getLeague, getLeagueRosters } from "../api/sleeper";
-import { loadDraftPlayerPool, type DraftPlayer } from "./players";
+import { loadDraftPlayerPool, mergeExpertRankings, type DraftPlayer } from "./players";
+import { fetchFantasyProsRankings } from "./fantasyProsRankings";
 
 export interface RosterSlot {
   /** The lineup position this slot represents - "QB", "FLEX", "BN", ... */
@@ -44,9 +45,20 @@ export function useTeamRosters(leagueId: string): TeamRostersState {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getLeague(leagueId), getLeagueRosters(leagueId), loadDraftPlayerPool()])
-      .then(([league, rosters, pool]) => {
+    Promise.all([
+      getLeague(leagueId),
+      getLeagueRosters(leagueId),
+      loadDraftPlayerPool(),
+      // Merged in here too, not just on the draft board: without it a
+      // rostered player has no projected points and no bye week, which
+      // is most of what a lineup-based forecast runs on. Returns empty
+      // rather than throwing if the proxy is unavailable, so names and
+      // positions still resolve.
+      fetchFantasyProsRankings(),
+    ])
+      .then(([league, rosters, basePool, fp]) => {
         if (cancelled) return;
+        const pool = mergeExpertRankings(basePool, fp);
         const byId = new Map(pool.map((p) => [p.id, p]));
         // "0" is Sleeper's empty-slot marker, not a player id.
         const toSlot = (slot: string, id: string | undefined): RosterSlot =>
