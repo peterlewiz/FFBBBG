@@ -8,9 +8,9 @@ import { LoadingScreen } from "./StatusScreen";
 const navItems = [
   { to: "/", label: "Home", end: true },
   { to: "/predictions", label: "Predictions" },
+  { to: "/odds", label: "Odds" },
   { to: "/shady-corner", label: "Shady's Corner" },
   { to: "/history", label: "History" },
-  { to: "/odds", label: "Odds" },
 ];
 
 /** Readable page name for GA, from the same labels the nav bar uses. */
