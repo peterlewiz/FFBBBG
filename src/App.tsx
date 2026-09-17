@@ -40,11 +40,12 @@ function App() {
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="history" element={<History />} />
-        <Route path="elo" element={<Elo />} />
+        <Route path="odds" element={<Elo />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="shady-corner" element={<ShadyCorner />} />
-        {/* Playoff odds moved onto the Elo page - keep the old path alive. */}
-        <Route path="playoff-odds" element={<Navigate to="/elo" replace />} />
+        {/* Playoff odds moved onto this page - keep old paths alive. */}
+        <Route path="playoff-odds" element={<Navigate to="/odds" replace />} />
+        <Route path="elo" element={<Navigate to="/odds" replace />} />
         <Route path="manager/:userId" element={<ManagerDetail />} />
         {/* Graphs was removed. Without this a bookmarked /graphs renders
             a blank page, since there's no catch-all route. */}

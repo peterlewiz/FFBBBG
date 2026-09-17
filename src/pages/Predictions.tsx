@@ -262,10 +262,10 @@ export function Predictions() {
         </h1>
         <p className="mt-1 text-sm text-muted">
           Pick who wins each matchup for the week. Picks lock once a game starts. See the{" "}
-          <Link to="/elo" className="font-medium text-neon hover:underline">
-            Elo
+          <Link to="/odds" className="font-medium text-neon hover:underline">
+            Odds
           </Link>{" "}
-          tab for the ratings model.
+          tab for the projections behind the favourite.
         </p>
       </div>
 

@@ -211,7 +211,7 @@ export function Elo() {
       ) : (
         <>
       <div>
-        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Elo</h1>
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Odds</h1>
         <p className="mt-1 text-sm text-muted">
           A simple Elo rating built from every historical matchup — higher rating means a
           manager has consistently beaten good teams by good margins. See the{" "}

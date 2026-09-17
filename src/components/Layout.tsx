@@ -10,7 +10,7 @@ const navItems = [
   { to: "/predictions", label: "Predictions" },
   { to: "/shady-corner", label: "Shady's Corner" },
   { to: "/history", label: "History" },
-  { to: "/elo", label: "Elo" },
+  { to: "/odds", label: "Odds" },
 ];
 
 /** Readable page name for GA, from the same labels the nav bar uses. */
