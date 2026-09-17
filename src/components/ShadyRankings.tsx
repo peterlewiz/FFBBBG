@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { TeamBadge } from "./TeamBadge";
 import { teamColor } from "../lib/teamColors";
-import { isSupabaseConfigured, supabaseUrl } from "../lib/supabaseClient";
+import { isSupabaseConfigured } from "../lib/supabaseClient";
 import {
   fetchRankings,
   formatForDiscord,
   rankedWeeks,
   rankingForWeek,
   saveRankings,
-  SETUP_SQL,
   type PowerRankingRow,
   type RankingEntry,
 } from "../lib/shadyRankings";
@@ -36,57 +35,6 @@ function Delta({ value }: { value: number | null }) {
   );
 }
 
-/**
- * Shown to whoever unlocked the editor when the table doesn't exist yet.
- * Nothing in the app can create it - the browser only holds the anon key,
- * which has no DDL rights - so the one useful thing to do is hand over
- * the SQL and a link to the place it runs.
- */
-function SetupNotice() {
-  const [copied, setCopied] = useState(false);
-  // https://<ref>.supabase.co -> the dashboard's SQL editor for that project.
-  const projectRef = supabaseUrl ? new URL(supabaseUrl).hostname.split(".")[0] : null;
-
-  async function copySql() {
-    try {
-      await navigator.clipboard.writeText(SETUP_SQL);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      window.prompt("Copy this SQL:", SETUP_SQL);
-    }
-  }
-
-  return (
-    <div className="border-b border-line bg-amber-500/10 px-5 py-4">
-      <p className="text-sm font-semibold text-amber-300">One-time setup needed</p>
-      <p className="mt-1 text-xs text-body">
-        Rankings can't save until the <code className="text-amber-200">power_rankings</code> table
-        exists. Copy the SQL, run it in the Supabase SQL editor, then reload this page.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={copySql}
-          className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/30"
-        >
-          {copied ? "Copied" : "Copy setup SQL"}
-        </button>
-        {projectRef && (
-          <a
-            href={`https://supabase.com/dashboard/project/${projectRef}/sql/new`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-body hover:bg-surface-2"
-          >
-            Open SQL editor ↗
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function ShadyRankings({
   leagueId,
   season,
@@ -99,7 +47,6 @@ export function ShadyRankings({
   managers: Manager[];
 }) {
   const [rows, setRows] = useState<PowerRankingRow[]>([]);
-  const [tableMissing, setTableMissing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,8 +76,7 @@ export function ShadyRankings({
     fetchRankings(leagueId, season)
       .then((result) => {
         if (cancelled) return;
-        setRows(result.rows);
-        setTableMissing(result.tableMissing);
+        setRows(result);
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -218,16 +164,13 @@ export function ShadyRankings({
     setError(null);
     try {
       await saveRankings(leagueId, season, week, draft);
-      const result = await fetchRankings(leagueId, season);
-      setRows(result.rows);
-      setTableMissing(result.tableMissing);
+      setRows(await fetchRankings(leagueId, season));
       setViewWeek(week);
       setDraft(null);
     } catch (e) {
       // Keep the draft on screen - a failed save shouldn't cost you the
       // ordering and the write-ups you just typed out.
       setError(e instanceof Error ? e.message : "Couldn't save rankings");
-      setTableMissing(true);
     } finally {
       setSaving(false);
     }
@@ -278,7 +221,6 @@ export function ShadyRankings({
       </div>
 
       {error && <p className="border-b border-line px-5 py-2 text-sm text-red-400">{error}</p>}
-      {unlocked && tableMissing && <SetupNotice />}
 
       {loading ? (
         <p className="px-5 py-4 text-sm text-muted">Loading rankings…</p>

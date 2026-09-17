@@ -1,8 +1,6 @@
 import { supabase } from "./supabaseClient";
 
 export interface PowerRankingRow {
-  league_id: string;
-  season: string;
   week: number;
   user_id: string;
   rank: number;
@@ -11,70 +9,48 @@ export interface PowerRankingRow {
 }
 
 /**
- * The one-time table setup, duplicated from supabase/schema.sql so the
- * page can hand it straight to whoever's trying to post. Until this runs
- * there is nothing to write to, and every save fails - having it a click
- * away beats an error message pointing at a file in the repo.
+ * Rankings live as a single JSON blob in `fantasypros_cache`, which is a
+ * plain `cache_key -> jsonb` table that already exists in this project
+ * with the same public read/write policies as everything else.
+ *
+ * A dedicated `power_rankings` table would model this better, but
+ * creating one needs DDL rights the browser doesn't have (it only ever
+ * holds the anon key), so shipping that version meant someone running
+ * SQL in the Supabase dashboard before the page worked at all. Reusing a
+ * table that's already there means the editor just works for whoever has
+ * the passphrase. The FantasyPros code only ever touches its own fixed
+ * keys by name - it never lists, sweeps or deletes - so the two can share
+ * the table safely.
  */
-export const SETUP_SQL = `create table if not exists power_rankings (
-  id uuid primary key default gen_random_uuid(),
-  league_id text not null,
-  season text not null,
-  week int not null,
-  user_id text not null,
-  rank int not null,
-  note text,
-  updated_at timestamptz not null default now(),
-  unique (league_id, season, week, user_id)
-);
+const KV_TABLE = "fantasypros_cache";
 
-alter table power_rankings enable row level security;
-
-create policy "public read" on power_rankings
-  for select using (true);
-
-create policy "public insert" on power_rankings
-  for insert with check (true);
-
-create policy "public update" on power_rankings
-  for update using (true) with check (true);`;
-
-/**
- * True when the failure is just "this table hasn't been created yet"
- * (PostgREST reports it as PGRST205 / a schema-cache miss) rather than
- * something actually wrong. Worth distinguishing: until SETUP_SQL is
- * run, reading is *expected* to fail, and showing a raw Postgres string
- * for it is only noise.
- */
-export function isMissingTableError(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  return (
-    error.code === "PGRST205" ||
-    (error.message ?? "").includes("power_rankings") ||
-    (error.message ?? "").includes("schema cache")
-  );
+/** One blob per league-season, so a week can be rewritten without
+ * touching any other season's history. */
+function storageKey(leagueId: string, season: string): string {
+  return `shady-rankings:${leagueId}:${season}`;
 }
 
-export interface RankingsFetch {
+interface RankingsBlob {
   rows: PowerRankingRow[];
-  /** The table doesn't exist yet, so this isn't "no rankings posted" -
-   * it's "nothing can be posted". The editor surfaces the setup SQL on
-   * this rather than letting every save fail with the same error. */
-  tableMissing: boolean;
 }
 
-export async function fetchRankings(leagueId: string, season: string): Promise<RankingsFetch> {
-  if (!supabase) return { rows: [], tableMissing: false };
+function parseBlob(data: unknown): PowerRankingRow[] {
+  if (!data || typeof data !== "object") return [];
+  const rows = (data as RankingsBlob).rows;
+  return Array.isArray(rows) ? rows : [];
+}
+
+export async function fetchRankings(leagueId: string, season: string): Promise<PowerRankingRow[]> {
+  if (!supabase) return [];
   const { data, error } = await supabase
-    .from("power_rankings")
-    .select("*")
-    .eq("league_id", leagueId)
-    .eq("season", season);
-  if (error) {
-    if (isMissingTableError(error)) return { rows: [], tableMissing: true };
-    throw new Error(error.message);
-  }
-  return { rows: data ?? [], tableMissing: false };
+    .from(KV_TABLE)
+    .select("data")
+    .eq("cache_key", storageKey(leagueId, season))
+    .maybeSingle();
+  // maybeSingle gives null rather than an error when nothing's been
+  // posted yet, which is the normal state before the first ranking.
+  if (error) throw new Error(error.message);
+  return parseBlob(data?.data);
 }
 
 export interface RankingEntry {
@@ -84,9 +60,13 @@ export interface RankingEntry {
 }
 
 /**
- * Writes a whole week's ordering in one upsert - the list is meaningless
- * half-saved, and upserting on the unique key lets a week be re-ranked as
- * many times as you like without piling up rows.
+ * Writes a whole week's ordering at once - the list is meaningless half
+ * saved - replacing any previous ranking for that week so a week can be
+ * re-ranked as often as you like without piling up duplicates.
+ *
+ * Read-modify-write on the shared blob, so two people ranking different
+ * weeks at the same moment would have one overwrite the other. One
+ * person holds the passphrase, so that race isn't worth a transaction.
  */
 export async function saveRankings(
   leagueId: string,
@@ -95,27 +75,23 @@ export async function saveRankings(
   entries: RankingEntry[],
 ): Promise<void> {
   if (!supabase) throw new Error("Rankings aren't configured yet.");
-  const rows = entries.map((entry, i) => ({
-    league_id: leagueId,
-    season,
-    week,
-    user_id: entry.userId,
-    rank: i + 1,
-    note: entry.note.trim() || null,
-    updated_at: new Date().toISOString(),
-  }));
-  const { error } = await supabase
-    .from("power_rankings")
-    .upsert(rows, { onConflict: "league_id,season,week,user_id" });
-  // Saving is the moment the missing table actually matters, so say
-  // something useful here rather than passing the Postgres text through.
-  if (error) {
-    throw new Error(
-      isMissingTableError(error)
-        ? "Nothing saved - the power_rankings table doesn't exist in Supabase yet. Run the setup SQL below, then save again."
-        : error.message,
-    );
-  }
+  const existing = await fetchRankings(leagueId, season);
+  const rows: PowerRankingRow[] = [
+    ...existing.filter((r) => r.week !== week),
+    ...entries.map((entry, i) => ({
+      week,
+      user_id: entry.userId,
+      rank: i + 1,
+      note: entry.note.trim() || null,
+    })),
+  ];
+
+  const { error } = await supabase.from(KV_TABLE).upsert({
+    cache_key: storageKey(leagueId, season),
+    data: { rows } satisfies RankingsBlob,
+    fetched_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
 }
 
 /** Weeks that have a saved ranking, most recent first. */

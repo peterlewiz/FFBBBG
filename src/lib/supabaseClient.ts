@@ -5,10 +5,6 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const isSupabaseConfigured = Boolean(url && anonKey);
 
-/** The project URL, for linking into the Supabase dashboard (the SQL
- * editor) when a table still needs creating by hand. */
-export const supabaseUrl = url ?? null;
-
 // Only construct a real client when configured, so importing this module
 // never throws just because env vars aren't set yet (e.g. right after this
 // feature ships, before Vercel env vars are added).
