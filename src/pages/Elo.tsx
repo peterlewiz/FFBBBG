@@ -29,7 +29,13 @@ export function Elo() {
   const { state: nflState } = useNflState();
   const targetWeek = nflState?.week ?? null;
 
-  const { byUserId: lineupByUser, model } = useLineupForecasts(ROOT_LEAGUE_ID, targetWeek);
+  const {
+    byUserId: lineupByUser,
+    model,
+    updatedAt,
+    refreshing,
+    refresh,
+  } = useLineupForecasts(ROOT_LEAGUE_ID, targetWeek);
 
   const eloResult = useMemo(() => (data ? computeEloRatings(data) : null), [data]);
   const leaderboard = useMemo(
@@ -135,9 +141,31 @@ export function Elo() {
       {upcomingMatchups.length > 0 && (
         <div className="rounded-2xl border border-line bg-surface shadow-sm">
           <div className="border-b border-line px-5 py-4">
-            <h2 className="text-lg font-semibold text-primary">
-              Win Probability — Week {targetWeek}
-            </h2>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="text-lg font-semibold text-primary">
+                Win Probability — Week {targetWeek}
+              </h2>
+              {/* Lineups re-read every minute, but a stale-looking number
+                  is only trustworthy if you can see when it was read. */}
+              <span className="text-[11px] text-muted">
+                {refreshing
+                  ? "Checking Sleeper…"
+                  : updatedAt
+                    ? `Lineups as of ${updatedAt.toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}`
+                    : ""}
+              </span>
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={refreshing}
+                className="ml-auto rounded-lg bg-surface-2 px-2.5 py-1 text-[11px] font-semibold text-body hover:bg-line disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            </div>
             <p className="text-xs text-muted">
               Every starter gets two projections — this site&apos;s own model and
               Sleeper&apos;s — averaged, both scored in this league&apos;s rules, then blended
