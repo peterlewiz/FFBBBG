@@ -39,7 +39,41 @@ export interface LeaderboardEntry {
   manager: Manager;
   correct: number;
   total: number;
-  accuracy: number; // 0-1
+  /** Raw hit rate, 0-1. What you actually went. */
+  accuracy: number;
+  /**
+   * Accuracy averaged with a coin-flip baseline, weighted by how many
+   * picks back it up. This is what the board is ranked on; `accuracy` is
+   * what it shows you went.
+   */
+  weightedAccuracy: number;
+}
+
+/**
+ * How much evidence the coin-flip baseline is worth, in picks.
+ *
+ * Six is one full week of matchups in this league, so a manager's first
+ * week counts half towards 50% and only pulls its own weight from week
+ * two. Without this the board is decided by whoever has picked least: a
+ * single lucky pick is 100% and tops anyone who has actually turned up
+ * all season. Picking winners is a coin flip until proven otherwise, so
+ * a coin flip is what a thin record is pulled towards.
+ */
+const BASELINE_PICKS = 6;
+/** What an unproven picker is assumed to be: no better than chance. */
+const BASELINE_ACCURACY = 0.5;
+
+/**
+ * A weighted average of a manager's real accuracy and the baseline, with
+ * their own record weighted by how many picks it contains.
+ *
+ * At equal accuracy the longer record still wins, but only on the
+ * tiebreak - the weighting alone can't separate 1/2 from 5/10 because
+ * both sit exactly on the baseline being averaged in. That's what the
+ * `total` tiebreak in the sort is for.
+ */
+export function weightedAccuracy(correct: number, total: number): number {
+  return (correct + BASELINE_PICKS * BASELINE_ACCURACY) / (total + BASELINE_PICKS);
 }
 
 /**
@@ -86,9 +120,18 @@ export function computeLeaderboard(
       correct,
       total,
       accuracy: total > 0 ? correct / total : 0,
+      weightedAccuracy: weightedAccuracy(correct, total),
     }))
     .filter((e) => e.manager)
-    .sort((a, b) => b.accuracy - a.accuracy || b.correct - a.correct);
+    // Total picks breaks a tie before raw accuracy does: two managers on
+    // the same weighted score are separated by who has more of a record,
+    // which is the whole point of weighting in the first place.
+    .sort(
+      (a, b) =>
+        b.weightedAccuracy - a.weightedAccuracy ||
+        b.total - a.total ||
+        b.accuracy - a.accuracy,
+    );
 }
 
 export interface MatchupOutcome {

@@ -539,7 +539,8 @@ export function Predictions() {
             Prediction Leaderboard
           </h2>
           <p className="text-xs text-muted">
-            Ranked by pick accuracy across every scored matchup
+            Ranked by weighted accuracy: a short record is pulled towards a coin flip, so a
+            long good run beats a couple of lucky calls. Your real record is on the right.
           </p>
         </div>
         {leaderboard.length === 0 ? (
@@ -559,11 +560,17 @@ export function Predictions() {
                 >
                   {entry.manager.displayName}
                 </Link>
-                <span className="text-xs text-muted">
-                  {entry.correct}/{entry.total}
+                <span
+                  className="w-16 shrink-0 rounded-full bg-neon/10 px-2.5 py-1 text-center text-sm font-semibold text-neon"
+                  title={`Weighted accuracy - ${entry.correct}/${entry.total} averaged with a coin flip, weighted by how many picks back it up. Ranks the board.`}
+                >
+                  {(entry.weightedAccuracy * 100).toFixed(0)}%
                 </span>
-                <span className="w-14 shrink-0 rounded-full bg-neon/10 px-2.5 py-1 text-center text-sm font-semibold text-neon">
-                  {(entry.accuracy * 100).toFixed(0)}%
+                <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted">
+                  {entry.correct}/{entry.total}
+                  <span className="ml-1 opacity-70">
+                    ({(entry.accuracy * 100).toFixed(0)}%)
+                  </span>
                 </span>
               </li>
             ))}
