@@ -27,7 +27,7 @@ const POLL_MS = 30_000;
  */
 const SCHEDULE_TTL_MS = 5 * 60 * 1000;
 
-async function cachedSchedule(season: string): Promise<SleeperScheduleGame[]> {
+export async function cachedSchedule(season: string): Promise<SleeperScheduleGame[]> {
   const key = `schedule:live:${season}:v1`;
   const hit = cacheGet<SleeperScheduleGame[]>(key);
   if (hit) return hit;

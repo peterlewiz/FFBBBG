@@ -5,6 +5,7 @@ import { trackPageView } from "../lib/ga";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { LoadingScreen } from "./StatusScreen";
 import { BottomNav } from "./BottomNav";
+import { ScoreStrip } from "./ScoreStrip";
 
 const navItems = [
   { to: "/", label: "Home", end: true },
@@ -68,6 +69,10 @@ export function Layout() {
        * and the whole page scrolled sideways.
        */}
       <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur">
+        {/* Live scores across the top, above the title and tabs (desktop). */}
+        <div className="mx-auto hidden max-w-5xl px-4 pt-2.5 sm:px-6 md:block">
+          <ScoreStrip />
+        </div>
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
           <NavLink to="/" className="flex min-w-0 items-center gap-2.5">
             <LeagueLogo avatar={data?.leagueAvatar ?? null} />
