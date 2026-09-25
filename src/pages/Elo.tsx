@@ -52,6 +52,7 @@ export function Elo() {
       key: userId,
       name: data.managers[userId]?.displayName ?? userId,
       color: teamColor(userId),
+      avatarUrl: `/manager-avatars/${userId}.png`,
     }));
     const chartData = eloResult.history.map((snap) => {
       const row: Record<string, number | string> = {
