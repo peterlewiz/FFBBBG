@@ -9,7 +9,7 @@ import { ChampionBanners } from "../components/ChampionBanners";
 import { SackoPanel } from "../components/SackoPanel";
 import { Podium } from "../components/Podium";
 import { Countdown } from "../components/Countdown";
-import { HeadlinesTicker } from "../components/HeadlinesTicker";
+import { NewsFrontPage } from "../components/NewsFrontPage";
 import { Reveal } from "../components/Reveal";
 import { SkeletonHome } from "../components/Skeleton";
 import { ErrorScreen } from "../components/StatusScreen";
@@ -53,7 +53,7 @@ export function Home() {
         </div>
       )}
 
-      <HeadlinesTicker headlines={headlines} />
+      <NewsFrontPage headlines={headlines} />
 
       <Reveal>
         <Podium entries={powerRankings} />
