@@ -181,7 +181,6 @@ function TeamSide({
         </span>
         <span className="block truncate text-[11px] text-muted">
           {team.yetToPlay > 0 ? `${team.yetToPlay} yet to play` : "all played"}
-          {team.benchPoints > 0 && ` · bench ${team.benchPoints.toFixed(1)}`}
         </span>
       </span>
       <span
