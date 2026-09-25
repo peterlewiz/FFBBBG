@@ -10,8 +10,8 @@ const navItems = [
   { to: "/", label: "Home", end: true },
   { to: "/scores", label: "Scores" },
   { to: "/predictions", label: "Predictions" },
-  { to: "/odds", label: "Odds" },
   { to: "/shady-corner", label: "Shady's Corner" },
+  { to: "/odds", label: "Odds" },
   { to: "/history", label: "History" },
 ];
 
