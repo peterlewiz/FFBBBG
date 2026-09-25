@@ -51,10 +51,13 @@ const PicksIcon = () => (
     <circle cx="12" cy="12" r="9" />
   </Icon>
 );
-const OddsIcon = () => (
+// Sunglasses, matching the page's own 🕶️.
+const ShadyIcon = () => (
   <Icon>
-    <path d="M4 19h16" />
-    <path d="M4 15l4-6 4 2 4-5 4 4" />
+    <path d="M3 10h7v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" />
+    <path d="M14 10h7v2a3 3 0 0 1-3 3h-1a3 3 0 0 1-3-3z" />
+    <path d="M10 11h4" />
+    <path d="M3 10l1-3M21 10l-1-3" />
   </Icon>
 );
 const MoreIcon = () => (
@@ -71,12 +74,13 @@ const TABS = [
   // "Picks" rather than "Predictions": five labels have to share 375px,
   // and it's what everyone calls it anyway.
   { to: "/predictions", label: "Picks", icon: <PicksIcon /> },
-  { to: "/odds", label: "Odds", icon: <OddsIcon /> },
+  // Short label for the same reason; the page title says it in full.
+  { to: "/shady-corner", label: "Shady's", icon: <ShadyIcon /> },
 ];
 
 /** Behind "More" - visited less often than the four tabs above. */
 const MORE = [
-  { to: "/shady-corner", label: "Shady's Corner" },
+  { to: "/odds", label: "Odds" },
   { to: "/history", label: "History" },
 ];
 
