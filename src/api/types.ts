@@ -116,8 +116,13 @@ export interface SleeperMatchup {
    * a manager with Brock Bowers set at TE for week 2 showed "0" in that
    * slot on /rosters while /matchups/2 had him correctly. */
   starters?: string[] | null;
-  /** Per-player points for the week, keyed by player id. */
+  /** Per-player points for the week, keyed by player id. Includes the
+   * bench, so what a team left on it can be worked out from this. */
   players_points?: Record<string, number> | null;
+  /** Live points per starting slot, positionally parallel to
+   * `starters`. Taken as-is rather than recomputed from players_points,
+   * so a scoreboard built on it can't disagree with the Sleeper app. */
+  starters_points?: number[] | null;
 }
 
 // One entry in the winners bracket. `p` is the placement decided by this
