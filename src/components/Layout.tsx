@@ -4,6 +4,7 @@ import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { trackPageView } from "../lib/ga";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { LoadingScreen } from "./StatusScreen";
+import { BottomNav } from "./BottomNav";
 
 const navItems = [
   { to: "/", label: "Home", end: true },
@@ -56,12 +57,15 @@ export function Layout() {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-ink">
+    // Bottom padding on phones reserves the space the fixed tab bar sits
+    // in, so the last thing on every page - the footer - is never hidden
+    // underneath it.
+    <div className="min-h-screen bg-ink pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       {/*
-       * Two rows on phones (title, then a scrollable nav) collapsing to a
-       * single row from `sm` up. Five nav items plus the league name do not
-       * fit on a 375px viewport in one row - that combination was pushing
-       * the whole page into horizontal scroll.
+       * Below `md` the header is just the league name - navigation lives in
+       * the bottom tab bar (see BottomNav). `md` rather than `sm` because
+       * six tabs and the name don't fit at 640px: the last tab was cut off
+       * and the whole page scrolled sideways.
        */}
       <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
@@ -71,7 +75,7 @@ export function Layout() {
               {data?.leagueName || FALLBACK_NAME}
             </span>
           </NavLink>
-          <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:overflow-visible sm:px-0">
+          <nav aria-label="Main" className="hidden shrink-0 gap-1 md:flex">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -116,6 +120,7 @@ export function Layout() {
         </a>
         . Not affiliated with Sleeper.
       </footer>
+      <BottomNav />
     </div>
   );
 }
