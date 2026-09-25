@@ -24,11 +24,19 @@ export function ScoreTrendChart({
   series,
   xKey,
   yLabel,
+  fitY = false,
 }: {
   data: Record<string, number | string>[];
   series: ChartSeries[];
   xKey: string;
   yLabel?: string;
+  /**
+   * Fit the y-axis to the data instead of starting it at zero. Right for
+   * a rating that lives in a narrow band far from zero - Elo sits around
+   * 1350-1650, and a 0-based axis squashes every line into a flat stripe
+   * along the top. Wrong for points, where zero is a real baseline.
+   */
+  fitY?: boolean;
 }) {
   return (
     // Height is CSS-driven so it can shrink on phones without a JS media query.
@@ -38,6 +46,16 @@ export function ScoreTrendChart({
         <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
         <XAxis dataKey={xKey} stroke={AXIS_COLOR} fontSize={12} tickLine={false} />
         <YAxis
+          // Rounded out to the nearest 25 past the data so the lines never
+          // touch the frame and the ticks land on readable numbers.
+          domain={
+            fitY
+              ? [
+                  (min: number) => Math.floor((min - 10) / 25) * 25,
+                  (max: number) => Math.ceil((max + 10) / 25) * 25,
+                ]
+              : undefined
+          }
           stroke={AXIS_COLOR}
           fontSize={12}
           tickLine={false}

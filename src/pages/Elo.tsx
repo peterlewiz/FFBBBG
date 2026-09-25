@@ -283,7 +283,7 @@ export function Elo() {
           <h2 className="mb-4 text-lg font-semibold text-primary">
             Rating over time
           </h2>
-          <ScoreTrendChart data={chartData} series={series} xKey="label" yLabel="Elo rating" />
+          <ScoreTrendChart data={chartData} series={series} xKey="label" yLabel="Elo rating" fitY />
         </div>
       )}
         </>

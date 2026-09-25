@@ -57,12 +57,20 @@ export function computeEloRatings(history: LeagueHistory): EloResult {
         byMatchup.set(row.matchupId, arr);
       }
 
+      let playedThisWeek = false;
       for (const pair of byMatchup.values()) {
         if (pair.length !== 2) continue; // skip byes / malformed pairs
         const [a, b] = pair;
         const userA = rosterToUser.get(a.rosterId);
         const userB = rosterToUser.get(b.rosterId);
         if (!userA || !userB) continue;
+        // Sleeper returns the whole season's schedule up front, every
+        // unplayed matchup sitting at 0-0. Without this those fell through
+        // to the tie branch below, so each future week was scored as a
+        // draw between every pair - dragging the best teams down and the
+        // worst up, fifteen fake weeks' worth before week 4 had kicked off.
+        if (a.points <= 0 && b.points <= 0) continue;
+        playedThisWeek = true;
 
         const ratingA = ratings[userA];
         const ratingB = ratings[userB];
@@ -81,6 +89,9 @@ export function computeEloRatings(history: LeagueHistory): EloResult {
         ratings[userB] = ratingB + K_FACTOR * mult * (actualB - expB);
       }
 
+      // No snapshot for a week nobody has played, or the chart runs a flat
+      // line out to week 18 of a season that's only a few weeks old.
+      if (!playedThisWeek) continue;
       snapshots.push({
         season: season.season,
         week,
