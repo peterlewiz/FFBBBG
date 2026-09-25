@@ -49,7 +49,24 @@ export function useCountUp<T extends HTMLElement = HTMLSpanElement>(
       { threshold: 0.4 },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+
+    // A count-up that never starts renders 0 forever, and the number
+    // being animated is the content - a reader has no way to tell a
+    // stuck animation from a real zero. IntersectionObserver can simply
+    // not deliver (a backgrounded or occluded tab is the common case),
+    // so the value is shown regardless after a grace period well past
+    // the animation's own duration.
+    const failsafe = window.setTimeout(() => {
+      if (started.current) return;
+      started.current = true;
+      observer.disconnect();
+      setValue(target);
+    }, durationMs + 2000);
+
+    return () => {
+      window.clearTimeout(failsafe);
+      observer.disconnect();
+    };
   }, [target, durationMs]);
 
   return { ref, display: value.toFixed(decimals) };

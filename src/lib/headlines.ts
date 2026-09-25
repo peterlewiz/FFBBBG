@@ -22,12 +22,17 @@ function daysUntil(date: Date): number {
 function getActiveManagerIds(history: LeagueHistory): Set<string> {
   const latestSeason = history.seasons[history.seasons.length - 1];
   return new Set(
-    (latestSeason?.rosters ?? []).map((r) => r.ownerUserId).filter((id): id is string => !!id),
+    (latestSeason?.rosters ?? [])
+      .map((r) => r.ownerUserId)
+      .filter((id): id is string => !!id),
   );
 }
 
 /** Managers whose only appearance in the league history is the current season. */
-function getNewcomerIds(history: LeagueHistory, activeIds: Set<string>): Set<string> {
+function getNewcomerIds(
+  history: LeagueHistory,
+  activeIds: Set<string>,
+): Set<string> {
   const latestSeason = history.seasons[history.seasons.length - 1];
   const seenBefore = new Set<string>();
   for (const season of history.seasons) {
@@ -38,8 +43,6 @@ function getNewcomerIds(history: LeagueHistory, activeIds: Set<string>): Set<str
   }
   return new Set([...activeIds].filter((id) => !seenBefore.has(id)));
 }
-
-
 
 /**
  * Deterministic pick from a list of phrasings.
@@ -92,10 +95,14 @@ function findLatestCompletedWeek(history: LeagueHistory): CompletedWeek | null {
   const season = history.seasons[history.seasons.length - 1];
   if (!season) return null;
   const rosterToUser = new Map(
-    season.rosters.filter((r) => r.ownerUserId).map((r) => [r.rosterId, r.ownerUserId as string]),
+    season.rosters
+      .filter((r) => r.ownerUserId)
+      .map((r) => [r.rosterId, r.ownerUserId as string]),
   );
 
-  const weekNumbers = [...new Set(season.weeks.map((w) => w.week))].sort((a, b) => b - a);
+  const weekNumbers = [...new Set(season.weeks.map((w) => w.week))].sort(
+    (a, b) => b - a,
+  );
   for (const week of weekNumbers) {
     const rows = season.weeks.filter((w) => w.week === week);
     if (rows.length === 0 || rows.some((r) => r.points <= 0)) continue;
@@ -140,6 +147,48 @@ function findLatestCompletedWeek(history: LeagueHistory): CompletedWeek | null {
     if (games.length > 0) return { week, games, scores };
   }
   return null;
+}
+
+/** "A", "A and B", "A, B and C" - so a headline about several managers
+ * reads like a sentence instead of a list. */
+function nameList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+interface StandingsRow {
+  manager: Manager;
+  wins: number;
+  losses: number;
+  pointsFor: number;
+}
+
+/**
+ * The current season's table, best record first. Only teams that have
+ * actually played are included - a roster sitting on 0-0 before week one
+ * isn't "winless", it just hasn't started.
+ */
+function currentStandings(history: LeagueHistory): StandingsRow[] {
+  const season = history.seasons[history.seasons.length - 1];
+  if (!season) return [];
+  return season.rosters
+    .map((r) => {
+      const manager = r.ownerUserId
+        ? history.managers[r.ownerUserId]
+        : undefined;
+      if (!manager) return null;
+      return {
+        manager,
+        wins: r.wins,
+        losses: r.losses,
+        pointsFor: r.pointsFor,
+      };
+    })
+    .filter(
+      (row): row is StandingsRow => row !== null && row.wins + row.losses > 0,
+    )
+    .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor);
 }
 
 /**
@@ -263,7 +312,10 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
     }
     // Only newsworthy if they'd have beaten someone else - otherwise
     // it's just "the loser scored points".
-    if (unlucky && unlucky.loserPoints > (scores[Math.floor(scores.length / 2)]?.points ?? 0)) {
+    if (
+      unlucky &&
+      unlucky.loserPoints > (scores[Math.floor(scores.length / 2)]?.points ?? 0)
+    ) {
       if (isActive(unlucky.loser)) {
         const pts = unlucky.loserPoints.toFixed(1);
         pushFor(
@@ -283,7 +335,8 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
               {
                 tag: "WRONG WEEK",
                 text: `${unlucky.loser.displayName} put up ${pts} and got absolutely nothing for it.`,
-                subhead: "Best week of their season, and it bought them nothing.",
+                subhead:
+                  "Best week of their season, and it bought them nothing.",
               },
             ],
             unlucky.loser.userId,
@@ -321,9 +374,184 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
     }
   }
 
+  // 0.5 Where the season actually stands. These sit behind last week's
+  // results but ahead of the evergreen narratives below: once games are
+  // being played, a perfect start or a winless one is the story, and
+  // "enters the season as defending champ" is the filler.
+  const standings = currentStandings(history);
+  const seasonWeek = lastWeek?.week ?? 0;
+  if (standings.length > 0) {
+    const played = standings[0].wins + standings[0].losses;
+
+    // An unbeaten record only means something once there's enough of it
+    // to be hard - at 1-0 every second team in the league qualifies.
+    //
+    // Several unbeaten teams share one headline rather than getting one
+    // each: the same sentence three times with different names reads
+    // like the page is broken, and "the last unbeaten teams" is the more
+    // interesting framing anyway.
+    const unbeaten = standings.filter(
+      (r) => r.losses === 0 && r.wins >= 2 && isActive(r.manager),
+    );
+    if (unbeaten.length === 1) {
+      const row = unbeaten[0];
+      pushFor(
+        row.manager,
+        pickVariant(
+          [
+            {
+              tag: "PERFECT",
+              text: `${row.manager.displayName} is ${row.wins}-0.`,
+              subhead: "Someone is going to have to do something about that.",
+            },
+            {
+              tag: "UNBEATEN",
+              text: `Nobody has beaten ${row.manager.displayName} yet.`,
+              subhead: `${row.wins} weeks, ${row.wins} wins. Tiresome.`,
+            },
+            {
+              tag: "STILL PERFECT",
+              text: `${row.manager.displayName} hasn't lost a game this season.`,
+              subhead: "Enjoy the view while it lasts.",
+            },
+          ],
+          row.manager.userId,
+          seasonWeek,
+        ),
+      );
+    } else if (unbeaten.length > 1) {
+      const names = nameList(unbeaten.map((r) => r.manager.displayName));
+      // Anchored to whichever of them doesn't already have a headline.
+      // Anchoring to the first unconditionally meant the whole story was
+      // dropped whenever that manager had already been written about -
+      // which is exactly who tends to be unbeaten.
+      const anchor = unbeaten.find((r) => !usedUserIds.has(r.manager.userId));
+      if (anchor)
+        pushFor(
+          anchor.manager,
+          pickVariant(
+            [
+              {
+                tag: "UNBEATEN",
+                text: `${names} are the last unbeaten teams.`,
+                // "Possibly both" only parses with exactly two of them.
+              subhead:
+                unbeaten.length === 2
+                  ? "One of them is a fraud. Possibly both."
+                  : "At least one of them is a fraud.",
+              },
+              {
+                tag: "STILL PERFECT",
+                text: `Nobody has managed to beat ${names} yet.`,
+                subhead: "Volunteers welcome.",
+              },
+            ],
+            unbeaten.map((r) => r.manager.userId).join(""),
+            seasonWeek,
+          ),
+        );
+    }
+
+    // Same treatment for the other end of the table.
+    const winless = standings.filter(
+      (r) => r.wins === 0 && r.losses >= 2 && isActive(r.manager),
+    );
+    if (winless.length === 1) {
+      const row = winless[0];
+      pushFor(
+        row.manager,
+        pickVariant(
+          [
+            {
+              tag: "WINLESS",
+              text: `${row.manager.displayName} is 0-${row.losses}.`,
+              subhead: "The season is young. Not that young, but young.",
+            },
+            {
+              tag: "STILL LOOKING",
+              text: `${row.manager.displayName} is still hunting a first win.`,
+              subhead: `${row.losses} tries, ${row.losses} failures.`,
+            },
+            {
+              tag: "ROUGH START",
+              text: `${row.losses} weeks in and ${row.manager.displayName} has nothing to show for it.`,
+              subhead: "At least the draft picks will be good.",
+            },
+          ],
+          row.manager.userId,
+          seasonWeek,
+        ),
+      );
+    } else if (winless.length > 1) {
+      const names = nameList(winless.map((r) => r.manager.displayName));
+      const losses = Math.max(...winless.map((r) => r.losses));
+      const anchor = winless.find((r) => !usedUserIds.has(r.manager.userId));
+      if (anchor)
+        pushFor(
+          anchor.manager,
+          pickVariant(
+            [
+              {
+                tag: "WINLESS",
+                text: `${names} are all still looking for a first win.`,
+                subhead: `${losses} weeks in. Somebody has to give.`,
+              },
+              {
+                tag: "ROUGH START",
+                text: `Nothing yet for ${names}.`,
+                subhead: "At least they have each other.",
+              },
+            ],
+            winless.map((r) => r.manager.userId).join(""),
+            seasonWeek,
+          ),
+        );
+    }
+
+    // Most points scored so far, which is a different claim from the best
+    // record and often a different manager - worth its own headline
+    // precisely when the two disagree.
+    const topScorer = [...standings].sort(
+      (a, b) => b.pointsFor - a.pointsFor,
+    )[0];
+    if (topScorer && isActive(topScorer.manager) && played > 0) {
+      const perWeek = (
+        topScorer.pointsFor /
+        (topScorer.wins + topScorer.losses)
+      ).toFixed(1);
+      pushFor(
+        topScorer.manager,
+        pickVariant(
+          [
+            {
+              tag: "POINTS LEADER",
+              text: `${topScorer.manager.displayName} has scored more than anyone: ${topScorer.pointsFor.toFixed(1)}.`,
+              subhead: `${perWeek} a week, and counting.`,
+            },
+            {
+              tag: "MOST POINTS",
+              text: `Nobody has put up more than ${topScorer.manager.displayName}'s ${topScorer.pointsFor.toFixed(1)}.`,
+              subhead: `Averaging ${perWeek}. Make of that what you will.`,
+            },
+            {
+              tag: "SCOREBOARD",
+              text: `${topScorer.manager.displayName} leads the league in points at ${perWeek} a week.`,
+              subhead: "Points don't hang banners, but they help.",
+            },
+          ],
+          topScorer.manager.userId,
+          seasonWeek,
+        ),
+      );
+    }
+  }
+
   // 1. Draft countdown (not about a specific manager)
   const latestSeason = history.seasons[history.seasons.length - 1];
-  if (latestSeason?.status === "pre_draft" || latestSeason?.status === "drafting") {
+  if (
+    latestSeason?.status === "pre_draft" ||
+    latestSeason?.status === "drafting"
+  ) {
     const days = daysUntil(resolveDraftDate(history.draftStartTime));
     headlines.push(
       days > 0
@@ -341,7 +569,9 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
   }
 
   // 2. Title defense narrative - the one and only headline about the champion.
-  const champions = getChampionHistory(history).filter((c) => c.champion && isActive(c.champion));
+  const champions = getChampionHistory(history).filter(
+    (c) => c.champion && isActive(c.champion),
+  );
   if (champions.length > 0 && champions[0].champion) {
     const reigning = champions[0].champion;
     let streakTitles = 0;
@@ -381,10 +611,12 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
   for (const [userId, streak] of Object.entries(streaks)) {
     if (!activeIds.has(userId) || usedUserIds.has(userId)) continue;
     if (streak.type === "W" && streak.length >= 3) {
-      if (!hottest || streak.length > hottest.length) hottest = { userId, length: streak.length };
+      if (!hottest || streak.length > hottest.length)
+        hottest = { userId, length: streak.length };
     }
     if (streak.type === "L" && streak.length >= 3) {
-      if (!coldest || streak.length > coldest.length) coldest = { userId, length: streak.length };
+      if (!coldest || streak.length > coldest.length)
+        coldest = { userId, length: streak.length };
     }
   }
   if (hottest) {
@@ -409,9 +641,16 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
   }
 
   // 5. Longest championship drought among current members (most seasons played, zero titles)
-  const allTime = computeAllTimePowerRankings(history).filter((e) => isActive(e.manager));
+  const allTime = computeAllTimePowerRankings(history).filter((e) =>
+    isActive(e.manager),
+  );
   const droughtCandidate = allTime
-    .filter((e) => e.titles === 0 && e.seasonsPlayed >= 2 && !usedUserIds.has(e.manager.userId))
+    .filter(
+      (e) =>
+        e.titles === 0 &&
+        e.seasonsPlayed >= 2 &&
+        !usedUserIds.has(e.manager.userId),
+    )
     .sort((a, b) => b.seasonsPlayed - a.seasonsPlayed)[0];
   if (droughtCandidate) {
     pushFor(droughtCandidate.manager, {
@@ -427,11 +666,26 @@ export function generateHeadlines(history: LeagueHistory): Headline[] {
   if (newcomerId) {
     const manager = history.managers[newcomerId];
     if (manager) {
-      pushFor(manager, {
-        tag: "NEW BLOOD",
-        text: `${manager.displayName} joins the league for the first time.`,
-        subhead: "Can the rookie compete from day one?",
-      });
+      // "joins the league" stops being news the moment they've played.
+      // Once there are games on the board the story is how it's going.
+      const row = standings.find((r) => r.manager.userId === manager.userId);
+      pushFor(
+        manager,
+        row
+          ? {
+              tag: "NEW BLOOD",
+              text: `${manager.displayName} is ${row.wins}-${row.losses} as a rookie.`,
+              subhead:
+                row.wins > row.losses
+                  ? "Nobody told them they're supposed to struggle."
+                  : "A traditional welcome to the league.",
+            }
+          : {
+              tag: "NEW BLOOD",
+              text: `${manager.displayName} joins the league for the first time.`,
+              subhead: "Can the rookie compete from day one?",
+            },
+      );
     }
   }
 
