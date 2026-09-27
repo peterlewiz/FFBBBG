@@ -78,14 +78,22 @@ export function useScoreStrip(leagueId: string, week: number | null): ScoreStrip
         const games = schedule.filter((g) => g.week === targetWeek);
         const anyLive = games.some((g) => g.status !== "pre_game" && g.status !== "complete");
         const anyDone = games.some((g) => g.status === "complete");
+        // Without the fixture list (it failed to load this time) the points
+        // are the only evidence - and points on the board means the week
+        // has started, whatever else is unknown.
+        const anyPoints = matchups.some((m) => m.a.points > 0 || m.b.points > 0);
         const status: StripStatus =
-          games.length > 0 && games.every((g) => g.status === "complete")
-            ? "final"
-            : anyLive
-              ? "live"
-              : anyDone
-                ? "underway"
-                : "pre";
+          games.length === 0
+            ? anyPoints
+              ? "underway"
+              : "pre"
+            : games.every((g) => g.status === "complete")
+              ? "final"
+              : anyLive
+                ? "live"
+                : anyDone
+                  ? "underway"
+                  : "pre";
 
         setState({ matchups, status });
         // A finished week has nothing left to update.

@@ -344,7 +344,15 @@ async function cachedSeasonStats(
   const key = `stats:season:${season}:v1`;
   const hit = cacheGet<Record<string, SleeperStatLine>>(key);
   if (hit) return hit;
-  const data = trimStats(await getSeasonStats(season).catch(() => ({})), keep);
+  let raw: Record<string, SleeperStatLine>;
+  try {
+    raw = await getSeasonStats(season);
+  } catch {
+    // A failed request isn't cached - it would stand in for real data for
+    // the whole cache lifetime, up to a week.
+    return {};
+  }
+  const data = trimStats(raw, keep);
   cacheSet(key, data, SEASON_TTL_MS);
   return data;
 }
@@ -357,7 +365,15 @@ async function cachedWeekStats(
   const key = `stats:week:${season}:${week}:v1`;
   const hit = cacheGet<Record<string, SleeperStatLine>>(key);
   if (hit) return hit;
-  const data = trimStats(await getWeekStats(season, week).catch(() => ({})), keep);
+  let raw: Record<string, SleeperStatLine>;
+  try {
+    raw = await getWeekStats(season, week);
+  } catch {
+    // A failed request isn't cached - it would stand in for real data for
+    // the whole cache lifetime, up to a week.
+    return {};
+  }
+  const data = trimStats(raw, keep);
   cacheSet(key, data, WEEK_TTL_MS);
   return data;
 }
@@ -366,7 +382,14 @@ async function cachedSchedule(season: string) {
   const key = `schedule:${season}:v1`;
   const hit = cacheGet<{ week: number; home: string; away: string }[]>(key);
   if (hit) return hit;
-  const data = await getNflSchedule(season).catch(() => []);
+  let data: { week: number; home: string; away: string }[];
+  try {
+    data = await getNflSchedule(season);
+  } catch {
+    // A failed request isn't cached - it would stand in for real data for
+    // the whole cache lifetime, up to a week.
+    return [];
+  }
   cacheSet(key, data, SEASON_TTL_MS);
   return data;
 }
@@ -396,7 +419,14 @@ async function cachedSleeperProjections(
   const hit = cacheGet<Record<string, ProjectionEntry>>(key);
   if (hit) return new Map(Object.entries(hit));
 
-  const raw = await getWeeklyProjections(season, week).catch(() => []);
+  let raw: Awaited<ReturnType<typeof getWeeklyProjections>>;
+  try {
+    raw = await getWeeklyProjections(season, week);
+  } catch {
+    // A failed request isn't cached - it would stand in for real data for
+    // the whole cache lifetime, up to a week.
+    return new Map();
+  }
   const out: Record<string, ProjectionEntry> = {};
   for (const entry of raw) {
     // Sleeper lists every player, most with nothing but an ADP field.

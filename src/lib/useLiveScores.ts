@@ -31,7 +31,15 @@ export async function cachedSchedule(season: string): Promise<SleeperScheduleGam
   const key = `schedule:live:${season}:v1`;
   const hit = cacheGet<SleeperScheduleGame[]>(key);
   if (hit) return hit;
-  const data = await getNflSchedule(season).catch(() => []);
+  let data: SleeperScheduleGame[];
+  try {
+    data = await getNflSchedule(season);
+  } catch {
+    // Not cached: a failed request is a network blip, not an empty
+    // season. Saving it made the score strip read "Upcoming" with
+    // Thursday's points on the board, for five minutes at a time.
+    return [];
+  }
   cacheSet(key, data, SCHEDULE_TTL_MS);
   return data;
 }
