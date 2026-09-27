@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { SectionTabs } from "../components/SectionTabs";
 import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { usePredictions } from "../lib/usePredictions";
@@ -269,7 +270,17 @@ export function Predictions() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm">
+      <SectionTabs
+        label="Predictions sections"
+        tabs={[
+          { label: "Picks", target: "make-picks" },
+          { label: "Past picks", target: "past-picks" },
+          { label: "Rosters", target: "rosters" },
+          { label: "Leaderboard", target: "leaderboard" },
+        ]}
+      />
+
+      <div id="make-picks" className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm">
         <label htmlFor="picker" className="text-sm font-medium text-body">
           Who are you?
         </label>
@@ -404,7 +415,7 @@ export function Predictions() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+      <div id="past-picks" className="scroll-mt-40 rounded-2xl border border-line bg-surface shadow-sm">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-primary">Past Picks</h2>
@@ -481,7 +492,7 @@ export function Predictions() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+      <div id="rosters" className="scroll-mt-40 rounded-2xl border border-line bg-surface shadow-sm">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">Team Rosters</h2>
           <select
@@ -533,7 +544,7 @@ export function Predictions() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+      <div id="leaderboard" className="scroll-mt-40 rounded-2xl border border-line bg-surface shadow-sm">
         <div className="border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">
             Prediction Leaderboard

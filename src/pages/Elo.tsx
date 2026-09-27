@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { SectionTabs } from "../components/SectionTabs";
 import { Link } from "react-router-dom";
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
@@ -24,7 +25,14 @@ import { useNflState } from "../lib/useNflState";
 export function Elo() {
   // Playoff odds used to be their own tab; they live here now, behind a
   // toggle, since both views answer "how good is each team right now".
-  const [view, setView] = useState<"elo" | "odds">("elo");
+  // Playoff odds run 10,000 simulated seasons synchronously - about 180ms
+  // on a laptop, more on a phone. Rendered one tick after the page, so the
+  // sections above it are on screen first instead of waiting on it.
+  const [showPlayoffOdds, setShowPlayoffOdds] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setShowPlayoffOdds(true), 0);
+    return () => window.clearTimeout(id);
+  }, []);
   const { data, loading, error } = useLeagueHistory();
   const { state: nflState } = useNflState();
   const targetWeek = nflState?.week ?? null;
@@ -139,8 +147,32 @@ export function Elo() {
 
   return (
     <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Odds</h1>
+        <p className="mt-1 text-sm text-muted">
+          This week&apos;s win probabilities, every manager&apos;s Elo rating, and playoff odds
+          from 10,000 simulated seasons. See the{" "}
+          <Link to="/predictions" className="font-medium text-neon hover:underline">
+            Predictions
+          </Link>{" "}
+          tab to make your own picks for the week.
+        </p>
+      </div>
+
+      <SectionTabs
+        label="Odds sections"
+        tabs={[
+          // Only when there's a week to forecast - the section isn't
+          // rendered otherwise, and a tab pointing at nothing would be lit.
+          ...(upcomingMatchups.length > 0
+            ? [{ label: "Win probability", target: "win-probability" }]
+            : []),
+          { label: "Elo ratings", target: "elo" },
+          { label: "Playoff odds", target: "playoff-odds" },
+        ]}
+      />
       {upcomingMatchups.length > 0 && (
-        <div className="rounded-2xl border border-line bg-surface shadow-sm">
+        <div id="win-probability" className="rounded-2xl border border-line bg-surface shadow-sm">
           <div className="border-b border-line px-5 py-4">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h2 className="text-lg font-semibold text-primary">
@@ -186,46 +218,13 @@ export function Elo() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setView("elo")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-            view === "elo" ? "bg-neon text-ink" : "bg-surface-2 text-body hover:bg-line"
-          }`}
-        >
-          Elo Ratings
-        </button>
-        <button
-          type="button"
-          onClick={() => setView("odds")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-            view === "odds" ? "bg-neon text-ink" : "bg-surface-2 text-body hover:bg-line"
-          }`}
-        >
-          Playoff Odds
-        </button>
-      </div>
-
-      {view === "odds" ? (
-        <PlayoffOddsPanel />
-      ) : (
-        <>
-      <div>
-        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Odds</h1>
-        <p className="mt-1 text-sm text-muted">
-          A simple Elo rating built from every historical matchup — higher rating means a
-          manager has consistently beaten good teams by good margins. See the{" "}
-          <Link to="/predictions" className="font-medium text-neon hover:underline">
-            Predictions
-          </Link>{" "}
-          tab to make your own picks for the week.
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-line bg-surface shadow-sm">
+      <div id="elo" className="rounded-2xl border border-line bg-surface shadow-sm">
         <div className="border-b border-line px-5 py-4">
           <h2 className="text-lg font-semibold text-primary">Elo Leaderboard</h2>
+          <p className="text-xs text-muted">
+            Built from every matchup in league history. A higher rating means a manager has
+            consistently beaten good teams by good margins.
+          </p>
         </div>
         <ol className="divide-y divide-line">
           {leaderboard.map((entry, i) => {
@@ -287,8 +286,16 @@ export function Elo() {
           <ScoreTrendChart data={chartData} series={series} xKey="label" yLabel="Elo rating" fitY />
         </div>
       )}
-        </>
-      )}
+
+      <div id="playoff-odds">
+        {showPlayoffOdds ? (
+          <PlayoffOddsPanel />
+        ) : (
+          <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted">
+            Simulating the rest of the season…
+          </p>
+        )}
+      </div>
     </div>
   );
 }
