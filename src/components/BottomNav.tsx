@@ -81,6 +81,7 @@ const TABS = [
 /** Behind "More" - visited less often than the four tabs above. */
 const MORE = [
   { to: "/odds", label: "Odds" },
+  { to: "/teams", label: "Teams" },
   { to: "/history", label: "History" },
 ];
 
@@ -95,7 +96,10 @@ export function BottomNav() {
 
   // "More" lights up when you're on one of the pages inside it, so the bar
   // always shows where you are.
-  const inMore = MORE.some((item) => location.pathname.startsWith(item.to));
+  // Manager pages are reached through Teams, which lives in here.
+  const inMore =
+    MORE.some((item) => location.pathname.startsWith(item.to)) ||
+    location.pathname.startsWith("/manager/");
 
   // Close on navigation - including via the menu itself.
   useEffect(() => {

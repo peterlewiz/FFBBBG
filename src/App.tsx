@@ -23,6 +23,7 @@ const Predictions = lazy(() =>
   import("./pages/Predictions").then((m) => ({ default: m.Predictions })),
 );
 const Scores = lazy(() => import("./pages/Scores").then((m) => ({ default: m.Scores })));
+const Teams = lazy(() => import("./pages/Teams").then((m) => ({ default: m.Teams })));
 const ManagerDetail = lazy(() =>
   import("./pages/ManagerDetail").then((m) => ({ default: m.ManagerDetail })),
 );
@@ -42,6 +43,7 @@ function App() {
         <Route index element={<Home />} />
         <Route path="history" element={<History />} />
         <Route path="scores" element={<Scores />} />
+        <Route path="teams" element={<Teams />} />
         <Route path="odds" element={<Elo />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="shady-corner" element={<ShadyCorner />} />

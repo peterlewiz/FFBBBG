@@ -13,8 +13,15 @@ const navItems = [
   { to: "/predictions", label: "Predictions" },
   { to: "/shady-corner", label: "Shady's Corner" },
   { to: "/odds", label: "Odds" },
+  { to: "/teams", label: "Teams" },
   { to: "/history", label: "History" },
 ];
+
+/** A manager's page is reached through Teams, so Teams stays lit there -
+ * otherwise nothing in the nav says where you are. */
+function isTeamsSection(pathname: string): boolean {
+  return pathname.startsWith("/teams") || pathname.startsWith("/manager/");
+}
 
 /** Readable page name for GA, from the same labels the nav bar uses. */
 function pageTitleFor(pathname: string): string {
@@ -88,7 +95,9 @@ export function Layout() {
                 end={item.end}
                 className={({ isActive }) =>
                   `shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isActive ? "bg-neon/10 text-neon" : "text-body hover:bg-surface-2"
+                    isActive || (item.to === "/teams" && isTeamsSection(location.pathname))
+                      ? "bg-neon/10 text-neon"
+                      : "text-body hover:bg-surface-2"
                   }`
                 }
               >
