@@ -3,25 +3,38 @@ import { TeamBadge } from "./TeamBadge";
 import { teamColor } from "../lib/teamColors";
 import { isSupabaseConfigured } from "../lib/supabaseClient";
 import {
-  fetchRankings,
+  RANKERS,
+  allRankedWeeks,
+  fetchAllRankings,
   formatForDiscord,
-  rankedWeeks,
+  groupRankingForWeek,
+  rankerName,
   rankingForWeek,
   saveRankings,
-  type PowerRankingRow,
+  type RankedTeam,
+  type RankerId,
   type RankingEntry,
-} from "../lib/shadyRankings";
+  type RankingsByRanker,
+} from "../lib/yshRankings";
 import type { Manager } from "../lib/history";
 
 // Checked in the browser, and therefore present in the JS bundle: this
 // keeps the editor out of the way of casual visitors, it is not access
 // control. The table's RLS policies are public-write regardless, matching
-// the rest of the site - see supabase/schema.sql.
+// the rest of the site - see supabase/schema.sql. One passphrase for all
+// three rankers; who you're posting as is picked after unlocking.
 const PASSPHRASE = "Peterthegoat";
+// Unchanged from when this was Shady's Corner, so an unlocked tab stays
+// unlocked across the rename.
 const UNLOCK_KEY = "sleeper-site:shady-unlocked";
+const RANKER_KEY = "sleeper-site:ysh-ranker";
 // Long enough for a real dig, short enough that a Discord post of twelve
 // of them still reads as a ranking rather than an essay.
 const NOTE_MAX = 280;
+
+type View = "group" | RankerId;
+
+const EMPTY: RankingsByRanker = { shady: [], hany: [], youssef: [] };
 
 function Delta({ value }: { value: number | null }) {
   if (value === null) return <span className="text-[11px] text-muted">new</span>;
@@ -35,7 +48,42 @@ function Delta({ value }: { value: number | null }) {
   );
 }
 
-export function ShadyRankings({
+/** One row as displayed, whichever ranking it came from. */
+interface DisplayRow {
+  userId: string;
+  rank: number;
+  delta: number | null;
+  /** Write-ups, labelled with who wrote them when there's more than one
+   * ranker - unlabelled when it's one person's ranking. */
+  notes: { by: string | null; text: string }[];
+  /** Each ranker's placement, shown on group rows that average several. */
+  votes: { ranker: RankerId; rank: number }[] | null;
+}
+
+function readSession(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(key: string, value: string | null) {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    // Not persisting is fine - it just means choosing again next tab.
+  }
+}
+
+/** "A", "A and B", "A, B and C". */
+function nameList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+export function YshRankings({
   leagueId,
   season,
   week,
@@ -46,7 +94,7 @@ export function ShadyRankings({
   week: number | null;
   managers: Manager[];
 }) {
-  const [rows, setRows] = useState<PowerRankingRow[]>([]);
+  const [all, setAll] = useState<RankingsByRanker>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,17 +102,18 @@ export function ShadyRankings({
   const [attempt, setAttempt] = useState("");
   const [attemptFailed, setAttemptFailed] = useState(false);
 
+  const [view, setView] = useState<View>("group");
   const [viewWeek, setViewWeek] = useState<number | null>(null);
+  const [editAs, setEditAs] = useState<RankerId>(() => {
+    const saved = readSession(RANKER_KEY);
+    return RANKERS.some((r) => r.id === saved) ? (saved as RankerId) : "shady";
+  });
   const [draft, setDraft] = useState<RankingEntry[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(UNLOCK_KEY) === "1") setUnlocked(true);
-    } catch {
-      // sessionStorage unavailable - just stays locked until typed again
-    }
+    if (readSession(UNLOCK_KEY) === "1") setUnlocked(true);
   }, []);
 
   useEffect(() => {
@@ -73,10 +122,10 @@ export function ShadyRankings({
       setLoading(false);
       return;
     }
-    fetchRankings(leagueId, season)
+    fetchAllRankings(leagueId, season)
       .then((result) => {
         if (cancelled) return;
-        setRows(result);
+        setAll(result);
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -89,20 +138,61 @@ export function ShadyRankings({
     };
   }, [leagueId, season]);
 
-  const weeks = useMemo(() => rankedWeeks(rows), [rows]);
+  // One week list for every view, so switching between the group and a
+  // ranker keeps you on the same week.
+  const weeks = useMemo(() => allRankedWeeks(all), [all]);
   const shownWeek = viewWeek ?? weeks[0] ?? week;
-  const ranking = useMemo(
-    () => (shownWeek === null ? [] : rankingForWeek(rows, shownWeek)),
-    [rows, shownWeek],
-  );
   const byUserId = useMemo(() => new Map(managers.map((m) => [m.userId, m])), [managers]);
+
+  const group = useMemo(
+    () => (shownWeek === null ? null : groupRankingForWeek(all, shownWeek)),
+    [all, shownWeek],
+  );
+
+  const rows: DisplayRow[] = useMemo(() => {
+    if (shownWeek === null) return [];
+    if (view !== "group") {
+      return rankingForWeek(all[view], shownWeek).map((r) => ({
+        userId: r.userId,
+        rank: r.rank,
+        delta: r.delta,
+        notes: r.note ? [{ by: null, text: r.note }] : [],
+        votes: null,
+      }));
+    }
+    if (!group) return [];
+    // With one ranker the group is simply their ranking, so it's shown
+    // exactly like theirs: no author labels, no per-ranker placements.
+    const several = group.rankers.length > 1;
+    return group.teams.map((t) => ({
+      userId: t.userId,
+      rank: t.rank,
+      delta: t.delta,
+      notes: t.votes
+        .filter((v) => v.note)
+        .map((v) => ({ by: several ? rankerName(v.ranker) : null, text: v.note as string })),
+      votes: several ? t.votes.map((v) => ({ ranker: v.ranker, rank: v.rank })) : null,
+    }));
+  }, [all, group, shownWeek, view]);
+
+  const heading = view === "group" ? "YSH Power Rankings" : `${rankerName(view)}'s Power Rankings`;
 
   async function copyForDiscord() {
     if (shownWeek === null) return;
+    // Group write-ups keep their author on each line, so the Discord post
+    // is as clear as the page about who said what.
+    const forDiscord: RankedTeam[] = rows.map((r) => ({
+      userId: r.userId,
+      rank: r.rank,
+      delta: r.delta,
+      note: r.notes.length
+        ? r.notes.map((n) => (n.by ? `${n.by}: ${n.text}` : n.text)).join("\n")
+        : null,
+    }));
     const text = formatForDiscord(
-      ranking,
+      forDiscord,
       (userId) => byUserId.get(userId)?.displayName ?? userId,
-      shownWeek,
+      `${heading} - Week ${shownWeek}`,
     );
     try {
       await navigator.clipboard.writeText(text);
@@ -121,11 +211,7 @@ export function ShadyRankings({
   function lock() {
     setUnlocked(false);
     setDraft(null);
-    try {
-      sessionStorage.removeItem(UNLOCK_KEY);
-    } catch {
-      // nothing persisted to clear
-    }
+    writeSession(UNLOCK_KEY, null);
   }
 
   function unlock() {
@@ -136,18 +222,34 @@ export function ShadyRankings({
     setUnlocked(true);
     setAttempt("");
     setAttemptFailed(false);
-    try {
-      sessionStorage.setItem(UNLOCK_KEY, "1");
-    } catch {
-      // not persisting is fine, it just means retyping next tab
-    }
+    writeSession(UNLOCK_KEY, "1");
   }
 
-  /** Seed the editor from whatever's already ranked - order and write-ups
-   * both - then append anyone missing so a new team can't be silently
-   * dropped from the list. */
+  function chooseRanker(id: RankerId) {
+    setEditAs(id);
+    setDraft(null);
+    writeSession(RANKER_KEY, id);
+  }
+
+  const editAsRanked = week !== null && all[editAs].some((r) => r.week === week);
+
+  /**
+   * Seed the editor from this ranker's own ranking of the week if they've
+   * done one; otherwise start from their most recent earlier order, which
+   * is usually close, without carrying over last week's write-ups. Anyone
+   * missing is appended so a team can't be silently dropped.
+   */
   function startEditing() {
-    const seeded: RankingEntry[] = ranking.map((r) => ({ userId: r.userId, note: r.note ?? "" }));
+    if (week === null) return;
+    const mine = all[editAs];
+    const sameWeek = rankingForWeek(mine, week);
+    const earlierWeeks = allRankedWeeks({ ...EMPTY, [editAs]: mine }).filter((w) => w < week);
+    const seeded: RankingEntry[] =
+      sameWeek.length > 0
+        ? sameWeek.map((r) => ({ userId: r.userId, note: r.note ?? "" }))
+        : earlierWeeks.length > 0
+          ? rankingForWeek(mine, earlierWeeks[0]).map((r) => ({ userId: r.userId, note: "" }))
+          : [];
     const seededIds = new Set(seeded.map((e) => e.userId));
     const missing = managers
       .filter((m) => !seededIds.has(m.userId))
@@ -175,8 +277,10 @@ export function ShadyRankings({
     setSaving(true);
     setError(null);
     try {
-      await saveRankings(leagueId, season, week, draft);
-      setRows(await fetchRankings(leagueId, season));
+      await saveRankings(editAs, leagueId, season, week, draft);
+      setAll(await fetchAllRankings(leagueId, season));
+      // Show what was just posted.
+      setView(editAs);
       setViewWeek(week);
       setDraft(null);
     } catch (e) {
@@ -196,31 +300,42 @@ export function ShadyRankings({
     );
   }
 
+  let groupCaption: string | null = null;
+  if (view === "group" && group && shownWeek !== null && group.rankers.length > 0) {
+    const names = group.rankers.map(rankerName);
+    groupCaption =
+      names.length === 1
+        ? `Only ${names[0]} has ranked week ${shownWeek}, so this is ${names[0]}'s ranking.`
+        : `The average of ${nameList(names)}'s rankings for week ${shownWeek}.`;
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-4">
         <div>
-          <h2 className="text-lg font-semibold text-primary">🕶️ Shady Power Rankings</h2>
+          <h2 className="text-lg font-semibold text-primary">🕶️ {heading}</h2>
           <p className="text-xs text-muted">
-            Posted after each completed week. Arrows show the move since the last ranked week.
+            {view === "group"
+              ? "Everyone's rankings averaged. Arrows show the move since the last ranked week."
+              : "Posted after each completed week. Arrows show the move since the last ranked week."}
           </p>
         </div>
-        {ranking.length > 0 && (
+        {rows.length > 0 && !draft && (
           <button
             type="button"
             onClick={copyForDiscord}
-            title="Copy this week's rankings, formatted for Discord"
+            title="Copy this ranking, formatted for Discord"
             className="ml-auto rounded-lg bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/30"
           >
             {copied ? "Copied" : "Copy for Discord"}
           </button>
         )}
-        {weeks.length > 0 && (
+        {weeks.length > 0 && !draft && (
           <select
             value={shownWeek ?? ""}
             onChange={(e) => setViewWeek(Number(e.target.value))}
             className={`rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-primary ${
-              ranking.length > 0 ? "" : "ml-auto"
+              rows.length > 0 ? "" : "ml-auto"
             }`}
           >
             {weeks.map((w) => (
@@ -232,6 +347,34 @@ export function ShadyRankings({
         )}
       </div>
 
+      {!draft && (
+        <div className="flex gap-1 border-b border-line px-4 py-2 sm:px-5" role="tablist">
+          {(["group", ...RANKERS.map((r) => r.id)] as View[]).map((v) => {
+            const active = view === v;
+            // A ranker who hasn't ranked the week on show is dimmed, so it's
+            // clear before tapping that there's nothing behind the tab.
+            const ranked = v === "group" || shownWeek === null || all[v].some((r) => r.week === shownWeek);
+            return (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setView(v)}
+                title={ranked ? undefined : `${rankerName(v as RankerId)} hasn't ranked week ${shownWeek}`}
+                className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/60 sm:px-3 sm:text-sm ${
+                  active
+                    ? "bg-neon/10 text-neon"
+                    : `hover:bg-surface-2 hover:text-body ${ranked ? "text-body" : "text-muted/60"}`
+                }`}
+              >
+                {v === "group" ? "Group" : `${rankerName(v)}'s`}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {error && <p className="border-b border-line px-5 py-2 text-sm text-red-400">{error}</p>}
 
       {loading ? (
@@ -239,26 +382,17 @@ export function ShadyRankings({
       ) : draft ? (
         <div className="p-5">
           <p className="mb-3 text-xs text-muted">
-            Ordering week {week} (the last completed week). Top of the list is #1, and every write-up
-            is optional.
+            {rankerName(editAs)}&apos;s ranking for week {week} (the last completed week). Top of the
+            list is #1, and every write-up is optional.
           </p>
           <ol className="flex flex-col gap-2">
             {draft.map((entry, i) => {
               const m = byUserId.get(entry.userId);
               return (
-                <li
-                  key={entry.userId}
-                  className="rounded-lg border border-line bg-surface-2 px-3 py-2"
-                >
+                <li key={entry.userId} className="rounded-lg border border-line bg-surface-2 px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-6 shrink-0 text-center text-sm font-bold text-muted">
-                      {i + 1}
-                    </span>
-                    <TeamBadge
-                      userId={entry.userId}
-                      displayName={m?.displayName ?? entry.userId}
-                      size={22}
-                    />
+                    <span className="w-6 shrink-0 text-center text-sm font-bold text-muted">{i + 1}</span>
+                    <TeamBadge userId={entry.userId} displayName={m?.displayName ?? entry.userId} size={22} />
                     <span
                       className="min-w-0 flex-1 truncate text-sm font-medium"
                       style={{ color: teamColor(entry.userId) }}
@@ -304,7 +438,7 @@ export function ShadyRankings({
               disabled={saving || week === null}
               className="rounded-lg bg-neon px-4 py-1.5 text-sm font-semibold text-ink disabled:opacity-50"
             >
-              {saving ? "Saving…" : `Save week ${week}`}
+              {saving ? "Saving…" : `Save ${rankerName(editAs)}'s week ${week}`}
             </button>
             <button
               onClick={() => setDraft(null)}
@@ -316,37 +450,59 @@ export function ShadyRankings({
         </div>
       ) : (
         <>
-          {ranking.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-muted">No rankings posted yet.</p>
+          {groupCaption && <p className="border-b border-line px-5 py-2 text-xs text-muted">{groupCaption}</p>}
+          {rows.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted">
+              {view === "group" || weeks.length === 0
+                ? "No rankings posted yet."
+                : `${rankerName(view)} hasn't ranked week ${shownWeek} yet.`}
+            </p>
           ) : (
             <ol className="divide-y divide-line">
-              {ranking.map((r) => {
+              {rows.map((r) => {
                 const m = byUserId.get(r.userId);
                 return (
                   <li key={r.userId} className="px-5 py-2.5">
                     <div className="flex items-center gap-3">
                       <span className="w-6 text-center text-sm font-bold text-muted">{r.rank}</span>
-                      <TeamBadge
-                        userId={r.userId}
-                        displayName={m?.displayName ?? r.userId}
-                        size={22}
-                      />
+                      <TeamBadge userId={r.userId} displayName={m?.displayName ?? r.userId} size={22} />
                       <span
                         className="min-w-0 flex-1 truncate text-sm font-medium"
                         style={{ color: teamColor(r.userId) }}
                       >
                         {m?.displayName ?? r.userId}
                       </span>
+                      {r.votes && (
+                        // Where each ranker put the team, so a group placement
+                        // can be traced back to who's responsible for it.
+                        <span className="hidden shrink-0 gap-2 text-[11px] tabular-nums text-muted sm:flex">
+                          {r.votes.map((v) => (
+                            <span key={v.ranker} title={`${rankerName(v.ranker)} ranked them #${v.rank}`}>
+                              {rankerName(v.ranker)} <span className="text-body">#{v.rank}</span>
+                            </span>
+                          ))}
+                        </span>
+                      )}
                       <Delta value={r.delta} />
                     </div>
-                    {r.note && (
+                    {r.votes && (
+                      <p className="mt-0.5 flex gap-2 pl-[3.1rem] text-[11px] tabular-nums text-muted sm:hidden">
+                        {r.votes.map((v) => (
+                          <span key={v.ranker}>
+                            {rankerName(v.ranker)} <span className="text-body">#{v.rank}</span>
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                    {r.notes.map((n, i) => (
                       // Indented to line up with the name, not the rank
                       // number, so the column of write-ups reads as one
                       // block down the page.
-                      <p className="mt-1 pl-[3.1rem] pr-2 text-xs leading-relaxed text-body">
-                        {r.note}
+                      <p key={i} className="mt-1 pl-[3.1rem] pr-2 text-xs leading-relaxed text-body">
+                        {n.by && <span className="font-semibold text-primary">{n.by}: </span>}
+                        {n.text}
                       </p>
-                    )}
+                    ))}
                   </li>
                 );
               })}
@@ -360,12 +516,26 @@ export function ShadyRankings({
               // the page, the editor is simply open, and there's no sign
               // it was ever gated or any way back out.
               <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs text-muted">
+                  Ranking as
+                  <select
+                    value={editAs}
+                    onChange={(e) => chooseRanker(e.target.value as RankerId)}
+                    className="rounded-lg border border-line bg-surface px-2 py-1 text-xs text-primary"
+                  >
+                    {RANKERS.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   onClick={startEditing}
                   disabled={week === null}
                   className="rounded-lg bg-neon/20 px-3 py-1.5 text-xs font-semibold text-neon hover:bg-neon/30 disabled:opacity-50"
                 >
-                  {ranking.length === 0 ? "Post" : "Re-rank"} week {week}
+                  {editAsRanked ? "Re-rank" : "Post"} week {week}
                 </button>
                 <span className="text-xs text-muted">🔓 Editing unlocked</span>
                 <button

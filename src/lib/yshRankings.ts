@@ -24,10 +24,29 @@ export interface PowerRankingRow {
  */
 const KV_TABLE = "fantasypros_cache";
 
-/** One blob per league-season, so a week can be rewritten without
- * touching any other season's history. */
-function storageKey(leagueId: string, season: string): string {
-  return `shady-rankings:${leagueId}:${season}`;
+/** The three people who post rankings on YSH Corner. */
+export const RANKERS = [
+  { id: "shady", name: "Shady" },
+  { id: "hany", name: "Hany" },
+  { id: "youssef", name: "Youssef" },
+] as const;
+
+export type RankerId = (typeof RANKERS)[number]["id"];
+
+export function rankerName(id: RankerId): string {
+  return RANKERS.find((r) => r.id === id)?.name ?? id;
+}
+
+/**
+ * One blob per ranker per league-season, so a week can be rewritten
+ * without touching anyone else's rankings or any other season.
+ *
+ * Shady's key is exactly the one the page used when he was the only
+ * ranker ("shady-rankings:<league>:<season>"), so everything he posted
+ * before Hany and Youssef joined carries over without being moved.
+ */
+function storageKey(ranker: RankerId, leagueId: string, season: string): string {
+  return `${ranker}-rankings:${leagueId}:${season}`;
 }
 
 interface RankingsBlob {
@@ -40,15 +59,41 @@ function parseBlob(data: unknown): PowerRankingRow[] {
   return Array.isArray(rows) ? rows : [];
 }
 
-export async function fetchRankings(leagueId: string, season: string): Promise<PowerRankingRow[]> {
+export type RankingsByRanker = Record<RankerId, PowerRankingRow[]>;
+
+/** Every ranker's rankings for a season, in one request. */
+export async function fetchAllRankings(
+  leagueId: string,
+  season: string,
+): Promise<RankingsByRanker> {
+  const empty = Object.fromEntries(RANKERS.map((r) => [r.id, []])) as unknown as RankingsByRanker;
+  if (!supabase) return empty;
+  const keys = RANKERS.map((r) => storageKey(r.id, leagueId, season));
+  const { data, error } = await supabase
+    .from(KV_TABLE)
+    .select("cache_key, data")
+    .in("cache_key", keys);
+  if (error) throw new Error(error.message);
+  // A ranker who hasn't posted yet simply has no row, which is the
+  // normal state - not an error.
+  for (const row of data ?? []) {
+    const ranker = RANKERS.find((r) => storageKey(r.id, leagueId, season) === row.cache_key);
+    if (ranker) empty[ranker.id] = parseBlob(row.data);
+  }
+  return empty;
+}
+
+async function fetchRankings(
+  ranker: RankerId,
+  leagueId: string,
+  season: string,
+): Promise<PowerRankingRow[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from(KV_TABLE)
     .select("data")
-    .eq("cache_key", storageKey(leagueId, season))
+    .eq("cache_key", storageKey(ranker, leagueId, season))
     .maybeSingle();
-  // maybeSingle gives null rather than an error when nothing's been
-  // posted yet, which is the normal state before the first ranking.
   if (error) throw new Error(error.message);
   return parseBlob(data?.data);
 }
@@ -64,18 +109,19 @@ export interface RankingEntry {
  * saved - replacing any previous ranking for that week so a week can be
  * re-ranked as often as you like without piling up duplicates.
  *
- * Read-modify-write on the shared blob, so two people ranking different
- * weeks at the same moment would have one overwrite the other. One
- * person holds the passphrase, so that race isn't worth a transaction.
+ * Read-modify-write on that ranker's blob, so the same ranker saving two
+ * weeks at the same moment would have one overwrite the other. Each
+ * ranker has their own blob, so the three of them can't collide.
  */
 export async function saveRankings(
+  ranker: RankerId,
   leagueId: string,
   season: string,
   week: number,
   entries: RankingEntry[],
 ): Promise<void> {
   if (!supabase) throw new Error("Rankings aren't configured yet.");
-  const existing = await fetchRankings(leagueId, season);
+  const existing = await fetchRankings(ranker, leagueId, season);
   const rows: PowerRankingRow[] = [
     ...existing.filter((r) => r.week !== week),
     ...entries.map((entry, i) => ({
@@ -87,7 +133,7 @@ export async function saveRankings(
   ];
 
   const { error } = await supabase.from(KV_TABLE).upsert({
-    cache_key: storageKey(leagueId, season),
+    cache_key: storageKey(ranker, leagueId, season),
     data: { rows } satisfies RankingsBlob,
     fetched_at: new Date().toISOString(),
   });
@@ -106,7 +152,7 @@ export interface RankedTeam {
    * Null when there's no earlier week to compare against, or the team
    * wasn't ranked then. */
   delta: number | null;
-  /** Shady's reasoning for the placement, if he wrote one. */
+  /** The ranker's reasoning for the placement, if they wrote one. */
   note: string | null;
 }
 
@@ -136,6 +182,93 @@ export function rankingForWeek(rows: PowerRankingRow[], week: number): RankedTea
   });
 }
 
+
+/** Every week anyone has ranked, most recent first. */
+export function allRankedWeeks(all: RankingsByRanker): number[] {
+  return rankedWeeks(RANKERS.flatMap((r) => all[r.id]));
+}
+
+export interface RankerVote {
+  ranker: RankerId;
+  rank: number;
+  note: string | null;
+}
+
+export interface GroupRankedTeam {
+  userId: string;
+  rank: number;
+  /** Places gained since the previous week anyone ranked. */
+  delta: number | null;
+  averageRank: number;
+  /** Where each ranker who ranked this week put the team. */
+  votes: RankerVote[];
+}
+
+export interface GroupRanking {
+  /** Who ranked this week - one name means it's simply their ranking. */
+  rankers: RankerId[];
+  teams: GroupRankedTeam[];
+}
+
+/**
+ * Teams in order of their average rank across everyone who ranked the
+ * week. Ties - common with three rankers - go to the team with the better
+ * single placement, then alphabetically so the order never flickers
+ * between page loads.
+ */
+function groupOrder(all: RankingsByRanker, week: number) {
+  const rankers = RANKERS.map((r) => r.id).filter((id) => all[id].some((row) => row.week === week));
+  const votesByTeam = new Map<string, RankerVote[]>();
+  for (const ranker of rankers) {
+    for (const row of all[ranker].filter((r) => r.week === week)) {
+      const votes = votesByTeam.get(row.user_id) ?? [];
+      votes.push({ ranker, rank: row.rank, note: row.note?.trim() ? row.note.trim() : null });
+      votesByTeam.set(row.user_id, votes);
+    }
+  }
+  const teams = [...votesByTeam.entries()]
+    .map(([userId, votes]) => ({
+      userId,
+      votes,
+      averageRank: votes.reduce((sum, v) => sum + v.rank, 0) / votes.length,
+      bestRank: Math.min(...votes.map((v) => v.rank)),
+    }))
+    .sort(
+      (a, b) =>
+        a.averageRank - b.averageRank || a.bestRank - b.bestRank || a.userId.localeCompare(b.userId),
+    );
+  return { rankers, teams };
+}
+
+/**
+ * The group ranking for a week: everyone's rankings averaged. With only
+ * one ranker for the week the average is just their ranking, so the group
+ * view is exactly theirs - no special case needed.
+ *
+ * Movement compares against the group ranking of the most recent earlier
+ * week anyone ranked, the same rule each individual ranking uses.
+ */
+export function groupRankingForWeek(all: RankingsByRanker, week: number): GroupRanking {
+  const { rankers, teams } = groupOrder(all, week);
+  const earlier = allRankedWeeks(all).filter((w) => w < week);
+  const prev = earlier.length > 0 ? groupOrder(all, earlier[0]).teams : [];
+  const prevRank = new Map(prev.map((t, i) => [t.userId, i + 1]));
+
+  return {
+    rankers,
+    teams: teams.map((t, i) => {
+      const before = prevRank.get(t.userId);
+      return {
+        userId: t.userId,
+        rank: i + 1,
+        delta: before === undefined ? null : before - (i + 1),
+        averageRank: t.averageRank,
+        votes: t.votes,
+      };
+    }),
+  };
+}
+
 function movementLabel(delta: number | null): string {
   if (delta === null) return "NEW";
   if (delta === 0) return "-";
@@ -155,10 +288,10 @@ function movementLabel(delta: number | null): string {
 export function formatForDiscord(
   ranking: RankedTeam[],
   displayNameFor: (userId: string) => string,
-  week: number,
+  heading: string,
 ): string {
   if (ranking.length === 0) return "";
-  const title = `**Shady's Power Rankings - Week ${week}**`;
+  const title = `**${heading}**`;
 
   if (ranking.some((r) => r.note)) {
     const blocks = ranking.map((r) => {

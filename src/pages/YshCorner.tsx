@@ -1,10 +1,11 @@
 import { useLeagueHistory } from "../lib/useLeagueHistory";
 import { useNflState } from "../lib/useNflState";
 import { ErrorScreen, LoadingScreen } from "../components/StatusScreen";
-import { ShadyRankings } from "../components/ShadyRankings";
+import { YshRankings } from "../components/YshRankings";
 import { ROOT_LEAGUE_ID } from "../lib/history";
 
-export function ShadyCorner() {
+/** Power rankings from Youssef, Shady and Hany - hence YSH. */
+export function YshCorner() {
   const { data: history, loading, error } = useLeagueHistory();
   const { state: nflState } = useNflState();
 
@@ -16,8 +17,11 @@ export function ShadyCorner() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-primary sm:text-3xl">Shady&apos;s Corner</h1>
-        <p className="mt-1 text-sm text-muted">Hand-made power rankings, posted after each week.</p>
+        <h1 className="text-2xl font-bold text-primary sm:text-3xl">YSH Corner</h1>
+        <p className="mt-1 text-sm text-muted">
+          Power rankings from Youssef, Shady and Hany, posted after each week - and the group
+          ranking that averages them.
+        </p>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
@@ -25,7 +29,7 @@ export function ShadyCorner() {
             week before the NFL's current one - while week 2 is being
             played, you're ranking week 1. Clamped at 1 so the very start
             of a season doesn't aim at week 0. */}
-        <ShadyRankings
+        <YshRankings
           leagueId={ROOT_LEAGUE_ID}
           season={latestSeason?.season ?? ""}
           week={nflState ? Math.max(1, nflState.week - 1) : null}

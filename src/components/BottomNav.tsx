@@ -74,8 +74,7 @@ const TABS = [
   // "Picks" rather than "Predictions": five labels have to share 375px,
   // and it's what everyone calls it anyway.
   { to: "/predictions", label: "Picks", icon: <PicksIcon /> },
-  // Short label for the same reason; the page title says it in full.
-  { to: "/shady-corner", label: "Shady's", icon: <ShadyIcon /> },
+  { to: "/ysh-corner", label: "YSH", icon: <ShadyIcon /> },
 ];
 
 /** Behind "More" - visited less often than the four tabs above. */

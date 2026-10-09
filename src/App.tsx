@@ -27,8 +27,8 @@ const Teams = lazy(() => import("./pages/Teams").then((m) => ({ default: m.Teams
 const ManagerDetail = lazy(() =>
   import("./pages/ManagerDetail").then((m) => ({ default: m.ManagerDetail })),
 );
-const ShadyCorner = lazy(() =>
-  import("./pages/ShadyCorner").then((m) => ({ default: m.ShadyCorner })),
+const YshCorner = lazy(() =>
+  import("./pages/YshCorner").then((m) => ({ default: m.YshCorner })),
 );
 // Deliberately not in Layout's navItems - unlisted, reachable only by
 // typing the URL directly. See src/pages/DraftAssistant.tsx.
@@ -46,7 +46,9 @@ function App() {
         <Route path="teams" element={<Teams />} />
         <Route path="odds" element={<Elo />} />
         <Route path="predictions" element={<Predictions />} />
-        <Route path="shady-corner" element={<ShadyCorner />} />
+        <Route path="ysh-corner" element={<YshCorner />} />
+        {/* Was Shady's Corner before Hany and Youssef joined. */}
+        <Route path="shady-corner" element={<Navigate to="/ysh-corner" replace />} />
         {/* Playoff odds moved onto this page - keep old paths alive. */}
         <Route path="playoff-odds" element={<Navigate to="/odds" replace />} />
         <Route path="elo" element={<Navigate to="/odds" replace />} />

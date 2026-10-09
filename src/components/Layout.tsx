@@ -11,7 +11,7 @@ const navItems = [
   { to: "/", label: "Home", end: true },
   { to: "/scores", label: "Scores" },
   { to: "/predictions", label: "Predictions" },
-  { to: "/shady-corner", label: "Shady's Corner" },
+  { to: "/ysh-corner", label: "YSH Corner" },
   { to: "/odds", label: "Odds" },
   { to: "/teams", label: "Teams" },
   { to: "/history", label: "History" },
